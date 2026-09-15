@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+, "app/superadmin/dashboard/page.js", "app/super-admin/dashboard/page.ts", "app/api/pegawai/chat-save/route.ts", "app/pegawai/dashboard/page.js", "app/api/keuangan/keuanganDashboard.jsx", "app/api/pegawai/estimasi-gaji/route.js", "app/api/kirim-pesan/route.ts", "app/super-admin/fronting/create-leader/page.js" , "app/super-admin/dashboard/page.js", "app/leader/dashboard/page.tsx", "app/super-admin/laporan/route.js", "app/api/produk-promo/create/route.js" ],
+  "exclude": ["node_modules"]
+}

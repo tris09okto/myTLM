@@ -1,0 +1,40 @@
+{
+  "name": "mytlm-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.44",
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^7.9.1",
+    "ai": "^7.0.66",
+    "bcrypt": "^6.0.0",
+    "lucide-react": "^1.33.0",
+    "mysql2": "^3.23.2",
+    "next": "16.3.0",
+    "next-auth": "^4.24.15",
+    "nodemailer": "^9.0.5",
+    "prisma": "^6.12.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-select": "^5.10.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
