@@ -16,14 +16,18 @@ export async function POST(request: Request) {
 
     if (fileLampiran && fileLampiran instanceof File && fileLampiran.size > 0) {
       const isDirekturTarget = pengirimRole?.toLowerCase() === 'direktur';
-      const subFolder = isDirekturTarget ? 'public/uploads/direktur' : 'public/uploads/admin';
-      const uploadDir = path.join(process.cwd(), subFolder);
-      
+
+      const uploadDir = isDirekturTarget
+        ? path.join(process.cwd(), 'public', 'uploads', 'direktur')
+        : path.join(process.cwd(), 'public', 'uploads', 'admin');
+
       await fs.mkdir(uploadDir, { recursive: true });
 
       const prefix = isDirekturTarget ? 'instruksi_' : 'lampiran_';
-      safeFileName = `${prefix}${Date.now()}_${fileLampiran.name.replace(/\s+/g, '_')}`;
-      const filePath = path.join(uploadDir, safeFileName);
+      const safeFileName = `${prefix}${Date.now()}_${fileLampiran.name.replace(/\s+/g, '_')}`;
+
+      // Gunakan komentar /*turbopackIgnore: true*/ jika peringatan masih muncul pada safeFileName
+      const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, safeFileName);
 
       const bytes = await fileLampiran.arrayBuffer();
       const buffer = Buffer.from(bytes);

@@ -3,6 +3,8 @@
 import { useState, useEffect, FormEvent } from "react";
 import { SessionProvider, useSession, signOut } from "next-auth/react";
 
+export const dynamic = "force-dynamic";
+
 interface PaginationProps {
   currentPage: number;
   totalPages: number;

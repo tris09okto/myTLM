@@ -6,6 +6,9 @@ export default withAuth(
     const role = req.nextauth.token?.role;
     const path = req.nextUrl.pathname;
 
+    // CETAK LOG INI KE TERMINAL (Bukan di browser)
+    console.log(`[Middleware] Akses Path: ${path} | Role terdeteksi: '${role}'`);
+
     // Proteksi rute Super Admin
     if (path.startsWith("/super-admin") && role !== "super_admin") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
@@ -20,6 +23,26 @@ export default withAuth(
     if (path.startsWith("/pegawai") && role !== "pegawai") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
+
+    // Proteksi rute Admin Keuangan
+    if (path.startsWith("/keuangan") && role !== "keuangan") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
+    // Proteksi rute leader
+    if (path.startsWith("/leader") && role !== "leader") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
+    // Proteksi rute guest
+    if (path.startsWith("/guest") && role !== "guest") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
+    // Proteksi rute supervisor
+    if (path.startsWith("/supervisor") && role !== "supervisor") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
   },
   {
     callbacks: {
@@ -31,5 +54,5 @@ export default withAuth(
 
 // Tentukan rute mana saja yang ingin diproteksi oleh middleware
 export const config = {
-  matcher: ["/super-admin/:path*", "/admin/:path*", "/pegawai/:path*"],
+  matcher: ["/super-admin/:path*", "/admin/:path*", "/keuangan/:path*", "/pegawai/:path*", "/leader/:path*", "/guest/:path*", "/supervisor/:path*"],
 };

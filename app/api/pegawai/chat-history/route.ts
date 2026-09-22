@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]/route'; 
+import { authOptions } from "@/lib/auth"; // Sesuaikan path import 
 import {pool} from '@/lib/db'; 
 
 export async function GET() {

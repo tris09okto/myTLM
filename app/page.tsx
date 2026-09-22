@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth/next";
 // Sesuaikan path import ini jika Anda meletakkan authOptions di tempat berbeda
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"; 
+import { authOptions } from "@/lib/auth"; // Sesuaikan path import
 import { redirect } from "next/navigation";
 
 export default async function HomePage() {

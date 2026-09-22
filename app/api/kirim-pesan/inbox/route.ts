@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {pool} from '@/lib/db'; // Sesuaikan dengan koneksi database Anda (misal mysql2/pool)
 // Jika menggunakan NextAuth untuk autentikasi:
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'; // Sesuaikan path authOptions Anda
+import { authOptions } from "@/lib/auth"; // Sesuaikan path authOptions Anda
 
 export async function GET(request: Request) {
   try {

@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { SessionProvider, useSession, signOut } from "next-auth/react";
 
+export const dynamic = "force-dynamic";
+
 function GuestDashboardContent() {
   const { data: session, status } = useSession();
   const [dashboardData, setDashboardData] = useState<any>(null);

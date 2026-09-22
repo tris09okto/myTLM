@@ -5,6 +5,8 @@ import { SessionProvider, useSession, signOut } from "next-auth/react";
 import Select from "react-select";
 import * as XLSX from "xlsx";
 
+export const dynamic = "force-dynamic";
+
 function SearchableSelect({ name, options, value, onChange, placeholder, required, disabled }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -937,7 +939,7 @@ function UploadProdukView() {
 }
 
 // ==========================================
-// KOMPONEN: PENGUMUMAN VIEW
+// KOMPONEN: PENGUMUMAN VIEW (DIPERBARUI)
 // ==========================================
 function PengumumanView() {
   const [dataList, setDataList] = useState([]);
@@ -948,7 +950,9 @@ function PengumumanView() {
   const [formData, setFormData] = useState({
     judul: '',
     isi: '',
-    status: 'AKTIF'
+    status: 'AKTIF',
+    jenis_pengumuman: 'PRODUK_INFORMASI', // Default
+    target_penerima: 'ALL' // Default: Seluruh pegawai
   });
   const [lampiranFile, setLampiranFile] = useState(null);
   const [lampiranName, setLampiranName] = useState("");
@@ -976,12 +980,20 @@ function PengumumanView() {
       setFormData({
         judul: item.judul || '',
         isi: item.isi || '',
-        status: item.status || 'AKTIF'
+        status: item.status || 'AKTIF',
+        jenis_pengumuman: item.jenis_pengumuman || 'PRODUK_INFORMASI',
+        target_penerima: item.target_penerima || 'ALL'
       });
       setExistingLampiran(item.file_lampiran || "");
     } else {
       setEditingId(null);
-      setFormData({ judul: '', isi: '', status: 'AKTIF' });
+      setFormData({ 
+        judul: '', 
+        isi: '', 
+        status: 'AKTIF', 
+        jenis_pengumuman: 'PRODUK_INFORMASI', 
+        target_penerima: 'ALL' 
+      });
       setExistingLampiran("");
     }
     setLampiranFile(null);
@@ -1058,7 +1070,7 @@ function PengumumanView() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-lg font-semibold text-blue-600">Manajemen Pengumuman</h2>
-          <p className="text-sm text-gray-500">Kelola pengumuman penting untuk pegawai fronting.</p>
+          <p className="text-sm text-gray-500">Kelola pengumuman penting untuk pegawai.</p>
         </div>
         <button 
           onClick={() => handleOpenModal()} 
@@ -1074,6 +1086,8 @@ function PengumumanView() {
             <tr>
               <th className="px-6 py-4">No</th>
               <th className="px-6 py-4">Judul Pengumuman</th>
+              <th className="px-6 py-4">Jenis</th>
+              <th className="px-6 py-4">Target Penerima</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4">Tanggal</th>
               <th className="px-6 py-4 text-center">Aksi</th>
@@ -1081,12 +1095,31 @@ function PengumumanView() {
           </thead>
           <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
             {dataList.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Belum ada pengumuman.</td></tr>
+              <tr><td colSpan={7} className="px-6 py-10 text-center text-gray-500">Belum ada pengumuman.</td></tr>
             ) : (
               dataList.map((item, index) => (
                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-6 py-4 text-center">{index + 1}</td>
                   <td className="px-6 py-4 font-semibold text-gray-900 truncate max-w-xs">{item.judul}</td>
+                  <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                    {item.jenis_pengumuman === 'UMUM' ? (
+                      <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
+                        📢 Umum
+                      </span>
+                    ) : item.jenis_pengumuman === 'PRIBADI' ? (
+                      <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
+                        🔒 Pribadi
+                      </span>
+                    ) : (
+                      <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
+                        📦 Produk / Informasi
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                    {item.target_penerima === 'ALL_FRONTING' ? 'Hanya Fronting' : 
+                     item.target_penerima === 'ALL_NON_FRONTING' ? 'Hanya Non-Fronting' : 'Semua Pegawai'}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${item.status === 'AKTIF' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {item.status}
@@ -1129,16 +1162,49 @@ function PengumumanView() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                {/* Pilihan List Pengumuman */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">Jenis Pengumuman <span className="text-red-500">*</span></label>
+                  <select 
+                    value={formData.jenis_pengumuman} 
+                    onChange={(e) => setFormData({...formData, jenis_pengumuman: e.target.value})}
+                    required
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PRODUK_INFORMASI">Produk / Informasi</option>
+                    <option value="UMUM">Umum</option>
+                    <option value="PRIBADI">Pribadi</option>
+                  </select>
+                </div>
+
+                {/* Status Pengumuman */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">Status <span className="text-red-500">*</span></label>
+                  <select 
+                    value={formData.status} 
+                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                    required
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="AKTIF">Aktif</option>
+                    <option value="TIDAK AKTIF">Tidak Aktif</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Pilihan Target Penerima */}
               <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">Status <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-semibold mb-1.5 text-gray-700">Target Penerima Pengumuman <span className="text-red-500">*</span></label>
                 <select 
-                  value={formData.status} 
-                  onChange={(e) => setFormData({...formData, status: e.target.value})}
-                  required
+                  value={formData.target_penerima} 
+                  onChange={(e) => setFormData({...formData, target_penerima: e.target.value})}
+                  required 
                   className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="AKTIF">Aktif</option>
-                  <option value="TIDAK AKTIF">Tidak Aktif</option>
+                  <option value="ALL">Seluruh Pegawai (Termasuk Fronting & Non-Fronting)</option>
+                  <option value="ALL_FRONTING">Hanya Pegawai Fronting</option>
+                  <option value="ALL_NON_FRONTING">Hanya Pegawai Non-Fronting</option>
                 </select>
               </div>
 

@@ -1,13 +1,63 @@
 "use client";
 
 import { useState, useEffect, useRef, FormEvent } from "react";
-import { SessionProvider, useSession, signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
+
+export const dynamic = "force-dynamic";
 
 interface ChatMessage {
   role: string;
   text: string;
   isSaved?: boolean; 
 }
+
+// ==========================================
+// HELPER: BADGE JENIS PENGUMUMAN
+// ==========================================
+// ==========================================
+// HELPER: BADGE JENIS PENGUMUMAN
+// ==========================================
+const renderJenisBadge = (jenis?: string) => {
+  // 1. Amankan string: ubah ke huruf besar semua (uppercase) dan hapus spasi berlebih
+  const j = (jenis || '').trim().toUpperCase();
+  
+  // 2. Deteksi kategori Produk / Informasi
+  // Meng-cover: "PRODUK_INFORMASI", "Pengumuman Produk / Informasi"
+  if (j.includes('PRODUK') || j.includes('INFORMASI')) {
+    return (
+      <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-100 text-blue-700">
+        📦 Produk / Informasi
+      </span>
+    );
+  } 
+  
+  // 3. Deteksi kategori Umum
+  // Meng-cover: "UMUM", "Pengumuman Umum"
+  else if (j.includes('UMUM')) {
+    return (
+      <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-100 text-green-700">
+        📢 Umum
+      </span>
+    );
+  } 
+  
+  // 4. Deteksi kategori Pribadi
+  // Meng-cover: "Pengumuman Pribadi", "Balasan Laporan Pegawai", atau tipe custom lainnya ke spesifik NIK
+  else if (j.includes('PRIBADI') || j.includes('BALASAN')) {
+    return (
+      <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-purple-100 text-purple-700">
+        🔒 Pribadi
+      </span>
+    );
+  }
+  
+  // 5. Fallback Default (Jika ada tipe string baru di database yang tidak masuk kondisi di atas)
+  return (
+    <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-gray-100 text-gray-700">
+      📢 Informasi
+    </span>
+  );
+};
 
 // ==========================================
 // 1. KOMPONEN HALAMAN QnA & CHAT AGENT
@@ -340,72 +390,134 @@ function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) 
 }
 
 // ==========================================
-// KOMPONEN: PENGUMUMAN UMUM (SISI FRONTING)
+// KOMPONEN: PENGUMUMAN KATEGORI (UNIVERSAL)
 // ==========================================
-function PengumumanFrontingView() {
-  const [pengumumanList, setPengumumanList] = useState([]);
+function PengumumanKategoriView({ 
+  isNonFronting, 
+  kategoriFilter, 
+  title, 
+  subtitle,
+  onSelectPengumuman,
+  userNik,
+  notifikasiList = []
+}: { 
+  isNonFronting: boolean; 
+  kategoriFilter: 'UMUM' | 'PRODUK_INFORMASI' | 'PRIBADI'; 
+  title: string; 
+  subtitle: string;
+  onSelectPengumuman: (item: any) => void;
+  userNik?: string;
+  notifikasiList?: any[];
+}) {
+  const [listData, setListData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchPengumuman = async () => {
+    const loadData = async () => {
+      setIsLoading(true);
       try {
-        const res = await fetch('/api/pegawai/pengumuman');
-        if (res.ok) {
-          const result = await res.json();
-          setPengumumanList(Array.isArray(result.data) ? result.data : []);
+        if (kategoriFilter === 'UMUM' || kategoriFilter === 'PRODUK_INFORMASI') {
+          // Sumber 1: Tabel 'pengumuman' (Broadcast Global)
+          const queryTarget = isNonFronting ? 'ALL_NON_FRONTING' : 'ALL_FRONTING';
+          const res = await fetch(`/api/pegawai/pengumuman?target=${queryTarget}`);
+          
+          if (res.ok) {
+            const result = await res.json();
+            let fetchedData = Array.isArray(result.data) ? result.data : [];
+
+            fetchedData = fetchedData.filter((item: any) => {
+              const target = (item.target_penerima || 'ALL').toUpperCase();
+              const jenis = (item.jenis_pengumuman || '').toUpperCase();
+
+              const matchTarget = isNonFronting 
+                ? (target === 'ALL' || target === 'ALL_NON_FRONTING')
+                : (target === 'ALL' || target === 'ALL_FRONTING');
+
+              let matchJenis = false;
+              if (kategoriFilter === 'UMUM') {
+                matchJenis = jenis.includes('UMUM') && !jenis.includes('PRODUK') && !jenis.includes('INFORMASI');
+              } else if (kategoriFilter === 'PRODUK_INFORMASI') {
+                matchJenis = jenis.includes('PRODUK') || jenis.includes('INFORMASI');
+              }
+
+              return matchTarget && matchJenis;
+            });
+
+            setListData(fetchedData as never[]);
+          }
+        } else if (kategoriFilter === 'PRIBADI') {
+          // Sumber 2: Tabel 'pesan_notifikasi' (Pesan Personal / NIK Pegawai)
+          const filteredPribadi = notifikasiList.filter(notif => {
+            const penerima = (notif.penerima_nik || '').toUpperCase();
+            const jenis = (notif.jenis_pengumuman || notif.tipe_pesan || '').toUpperCase();
+
+            // Abaikan pesan broadcast global
+            const isBroadcast = penerima.includes('ALL') || penerima === 'ALL_FRONTING' || penerima === 'ALL_NON_FRONTING';
+            if (isBroadcast) return false;
+
+            // Cocokkan dengan NIK user atau tipe pesan pribadi/balasan
+            const isForUser = userNik ? penerima === userNik.toUpperCase() : true;
+            const isPribadiType = jenis.includes('PRIBADI') || jenis.includes('BALASAN');
+
+            return isForUser || isPribadiType;
+          });
+
+          setListData(filteredPribadi as never[]);
         }
       } catch (error) {
-        console.error("Gagal memuat data pengumuman:", error);
+        console.error("Gagal memuat data kategori:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchPengumuman();
-  }, []);
+    loadData();
+  }, [isNonFronting, kategoriFilter, userNik, notifikasiList]);
 
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-1">📢 Pengumuman Umum</h2>
-        <p className="text-sm text-gray-500">Informasi dan pengumuman penting terbaru dari manajemen pusat.</p>
+        <h2 className="text-xl font-bold text-gray-800 mb-1">{title}</h2>
+        <p className="text-sm text-gray-500">{subtitle}</p>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-gray-400">Memuat pengumuman...</div>
-      ) : pengumumanList.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">Memuat data...</div>
+      ) : listData.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center text-gray-500 border border-gray-100">
           <span className="text-4xl block mb-2">📭</span>
-          Belum ada pengumuman umum saat ini.
+          Belum ada data di kategori ini.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {pengumumanList.map((item: any) => (
-            <div key={item.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow">
+          {listData.map((item: any) => (
+            <div 
+              key={item.id} 
+              onClick={() => onSelectPengumuman(item)}
+              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+            >
               <div className="flex justify-between items-start gap-4 mb-3">
-                <h3 className="text-base font-bold text-gray-900">{item.judul}</h3>
+                <div className="space-y-1">
+                  {renderJenisBadge(item.jenis_pengumuman)}
+                  <h3 className="text-base font-bold text-gray-900 mt-1">{item.judul || item.tipe_pesan}</h3>
+                </div>
                 <span className="text-xs text-gray-400 whitespace-nowrap">
                   {item.created_at ? new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
                 </span>
               </div>
               
-              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed mb-4">
-                {item.isi}
+              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed mb-4 line-clamp-2">
+                {item.isi || item.konten}
               </p>
 
-              {item.file_lampiran && (
+              {item.file_lampiran && item.file_lampiran !== 'NULL' && (
                 <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-600 truncate">
-                    📎 Lampiran: {item.file_lampiran.split('-').slice(1).join('-')}
+                    📎 Lampiran: {item.file_lampiran}
                   </span>
-                  <a 
-                    href={`/uploads/pengumuman/${item.file_lampiran}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded text-xs transition-colors"
-                  >
-                    Buka Lampiran
-                  </a>
+                  <span className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded text-xs transition-colors">
+                    Lihat Detail
+                  </span>
                 </div>
               )}
             </div>
@@ -428,17 +540,14 @@ function PegawaiDashboardContent() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // IDENTIFIKATOR UTAMA: Cek apakah user adalah pegawai Non-Fronting
   const isNonFronting = Boolean(profile?.unit_kerja);
 
-  // --- STATE NOTIFIKASI / PENGUMUMAN ---
   const [notifikasi, setNotifikasi] = useState<any[]>([]);
   const [showNotif, setShowNotif] = useState(false);
   const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
   const [estimasiGaji, setEstimasiGaji] = useState<any>(null);
   const [isLoadingGaji, setIsLoadingGaji] = useState(true);
 
-  // --- STATE GANTI PASSWORD ---
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -448,24 +557,19 @@ function PegawaiDashboardContent() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // --- STATE LAPORAN & ADUAN ---
   const [laporanTarget, setLaporanTarget] = useState("leader"); 
   const [laporanPesan, setLaporanPesan] = useState("");
   const [laporanFoto, setLaporanFoto] = useState<File | null>(null);
   const [isSubmittingLaporan, setIsSubmittingLaporan] = useState(false);
   const [laporanMsg, setLaporanMsg] = useState({ type: '', text: '' });
 
-  // --- STATE PERKIRAAN PEMASUKAN ---
   const [perkiraanList, setPerkiraanList] = useState<any[]>([]);
   const [isLoadingPerkiraan, setIsLoadingPerkiraan] = useState(false);
   const [searchPerkiraan, setSearchPerkiraan] = useState("");
   const [currentPagePerkiraan, setCurrentPagePerkiraan] = useState(1);
   const itemsPerPage = 10;
 
-  // --- STATE RIWAYAT PESAN / BALASAN ---
   const [riwayatPesan, setRiwayatPesan] = useState<any[]>([]);
-
-  // Tambahkan state ini di dekat state riwayatPesan
   const [selectedPesanku, setSelectedPesanku] = useState<any>(null);
 
   const fetchRiwayatPesan = async () => {
@@ -514,7 +618,6 @@ function PegawaiDashboardContent() {
   const currentPerkiraanList = filteredPerkiraan.slice(indexOfFirstPerkiraan, indexOfLastPerkiraan);
   const totalPagesPerkiraan = Math.ceil(filteredPerkiraan.length / itemsPerPage);
 
-  // --- STATE ABSENSI ---
   const [sudahMasuk, setSudahMasuk] = useState(false);
   const [sudahPulang, setSudahPulang] = useState(false);
 
@@ -688,24 +791,29 @@ function PegawaiDashboardContent() {
   }, [profile, session]);
 
   const handleReadNotif = (notif: any) => {
+    // 1. Tandai notifikasi sebagai terbaca di state lokal
     setNotifikasi(notifikasi.map(n => n.id === notif.id ? { ...n, is_read: 1 } : n));
+    
+    // 2. Set data pengumuman yang dipilih untuk ditampilkan di layar utama
     setSelectedPengumuman(notif);
     
-    const tipe = notif.tipe_pesan?.toLowerCase() || '';
-    const penerima = notif.penerima_nik?.toUpperCase() || '';
+    // 3. Ambil jenis string dan ubah ke uppercase (agar kebal huruf besar/kecil)
+    const jenis = (notif.jenis_pengumuman || notif.tipe_pesan || '').toUpperCase();
 
-    // Logika pengarahan halaman menu pengumuman berdasarkan tipe atau target
-    if (tipe.includes('umum') || penerima === 'ALL' || penerima === 'ALL_FRONTING' || penerima === 'ALL_NON_FRONTING') {
-      setCurrentView('pengumuman-umum');
-    } else if (tipe.includes('produk') || tipe.includes('informasi')) {
+    // 4. Deteksi dan arahkan ke submenu yang tepat secara akurat
+    if (jenis.includes('PRODUK') || jenis.includes('INFORMASI')) {
       setCurrentView('pengumuman-produk');
-    } else {
+    } else if (jenis.includes('PRIBADI') || jenis.includes('BALASAN')) {
       setCurrentView('pengumuman-pribadi');
+    } else {
+      setCurrentView('pengumuman-umum'); // Default fallback jika tipe tidak spesifik
     }
 
+    // 5. Buka dropdown menu pengumuman di sidebar dan tutup popup lonceng
     setIsPengumumanOpen(true);
     setShowNotif(false);
 
+    // 6. Update status is_read ke database di background
     fetch('/api/notifikasi/read', {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -730,7 +838,6 @@ function PegawaiDashboardContent() {
 
   const getSubMenuClass = (viewName: string) => `block px-4 py-2 text-sm rounded transition-colors ${currentView === viewName ? 'text-white font-bold bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`;
 
-  // Handler kirim laporan (mendukung target Admin MO & SPV untuk pegawai non-fronting)
   const handleSubmitLaporan = async (e: FormEvent) => {
     e.preventDefault();
     setLaporanMsg({ type: '', text: '' });
@@ -739,7 +846,6 @@ function PegawaiDashboardContent() {
     setIsSubmittingLaporan(true);
     try {
       const formData = new FormData();
-      // Jika non-fronting, arahkan target otomatis ke 'admin_mo_spv' (Admin MO & SPV)
       formData.append('target', isNonFronting ? 'admin_mo_spv' : laporanTarget);
       formData.append('pesan', laporanPesan);
       formData.append('nik', profile?.nik || session?.user?.name || '');
@@ -794,7 +900,6 @@ function PegawaiDashboardContent() {
             <button onClick={() => setCurrentView("qna")} className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'qna' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}>❓ QnA</button>
           }
           
-          {/* MENU PELAPORAN YANG DIUBAH DINAMIS UNTUK NON-FRONTING */}
           <button onClick={() => setCurrentView("laporan-aduan")} className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'laporan-aduan' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}>
             📝 {isNonFronting ? 'PELAPORAN KE SUPERVISOR' : 'LAPORAN & ADUAN'}
           </button>
@@ -804,7 +909,6 @@ function PegawaiDashboardContent() {
           </button>
 
           {isNonFronting && 
-          
             <button 
               onClick={() => setCurrentView("riwayat-pesan")} 
               className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'riwayat-pesan' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
@@ -824,7 +928,6 @@ function PegawaiDashboardContent() {
             )}
           </div>
 
-          {/* TOMBOL ABSEN KHUSUS PEGAWAI NON-FRONTING */}
           {isNonFronting && (
             <div className="mt-6 flex flex-col gap-2">
               <button 
@@ -890,12 +993,12 @@ function PegawaiDashboardContent() {
                       notifikasi.map((notif) => (
                         <div key={notif.id} onClick={() => handleReadNotif(notif)} className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition ${!notif.is_read ? 'bg-blue-50/40' : 'bg-white'}`}>
                           <div className="flex justify-between items-start mb-1">
-                            <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide ${notif.tipe_pesan?.includes('Peringatan') ? 'bg-red-100 text-red-700' : notif.tipe_pesan?.includes('Tugas') ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{notif.tipe_pesan}</span>
+                            {renderJenisBadge(notif.jenis_pengumuman || notif.tipe_pesan)}
                             {!notif.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shadow-sm"></span>}
                           </div>
-                          <p className="text-sm text-gray-800 mt-2 font-medium line-clamp-3">{notif.konten}</p>
+                          <p className="text-sm text-gray-800 mt-2 font-medium line-clamp-3">{notif.konten || notif.judul}</p>
                           <div className="flex justify-between items-center mt-3 text-xs text-gray-500">
-                            <span>Oleh: {notif.pengirim_role}</span>
+                            <span>Oleh: {notif.pengirim_role || 'Admin'}</span>
                             {notif.file_lampiran && <span className="flex items-center text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded">📎 Lampiran</span>}
                           </div>
                         </div>
@@ -1107,7 +1210,6 @@ function PegawaiDashboardContent() {
             )}
 
             <form onSubmit={handleSubmitLaporan} className="space-y-6">
-              {/* Jika Non-Fronting, tampilkan info tujuan target laporan */}
               {isNonFronting ? (
                 <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center gap-3">
                   <span className="text-2xl">👥</span>
@@ -1257,9 +1359,7 @@ function PegawaiDashboardContent() {
                         <span className="text-xs font-bold px-2 py-0.5 bg-gray-100 text-gray-700 rounded uppercase">
                           {item.pengirim_role || 'Sistem'}
                         </span>
-                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">
-                          {item.tipe_pesan}
-                        </span>
+                        {renderJenisBadge(item.jenis_pengumuman || item.tipe_pesan)}
                       </div>
                       <p className="text-sm text-gray-800 font-medium line-clamp-2">{item.konten}</p>
                       <span className="text-xs text-gray-400 block">
@@ -1283,12 +1383,10 @@ function PegawaiDashboardContent() {
               )}
             </div>
 
-            {/* MODAL / TAMPILAN DETAIL THREAD PERCAKAPAN */}
             {selectedPesanku && (
               <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
                   
-                  {/* Header Modal */}
                   <div className="bg-blue-600 text-white p-5 flex justify-between items-center">
                     <div>
                       <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
@@ -1304,7 +1402,6 @@ function PegawaiDashboardContent() {
                     </button>
                   </div>
 
-                  {/* Body Isi Pesan & Riwayat Balasan Kronologis */}
                   <div className="p-6 overflow-y-auto space-y-4 bg-gray-50 flex-1">
                     <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm space-y-3">
                       <div className="flex justify-between items-center text-xs text-gray-400 border-b pb-2">
@@ -1331,7 +1428,6 @@ function PegawaiDashboardContent() {
                     </div>
                   </div>
 
-                  {/* Footer Modal */}
                   <div className="bg-gray-100 px-6 py-4 border-t border-gray-200 flex justify-end">
                     <button 
                       onClick={() => setSelectedPesanku(null)}
@@ -1348,40 +1444,39 @@ function PegawaiDashboardContent() {
           </div>
         )}
 
-        {/* 7. TAMPILAN PENGUMUMAN & GANTI PASSWORD */}
+        {/* 7. TAMPILAN MENU PENGUMUMAN (UMUM, PRODUK, PRIBADI) }
         {currentView.includes('pengumuman') && (
           <div className="max-w-4xl mx-auto">
+            
             {currentView === 'pengumuman-umum' && !selectedPengumuman ? (
-              <PengumumanFrontingView />
+              <PengumumanFrontingView isNonFronting={isNonFronting} /> 
             ) : selectedPengumuman ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
                 <div className="space-y-6 animate-fade-in">
                   <div className="border-b border-gray-100 pb-4 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-bold px-3 py-1 rounded-md uppercase tracking-wide ${selectedPengumuman.tipe_pesan?.includes('Peringatan') ? 'bg-red-100 text-red-700' : selectedPengumuman.tipe_pesan?.includes('Tugas') ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {selectedPengumuman.tipe_pesan}
-                        </span>
-                        {selectedPengumuman.penerima_nik === 'ALL_FRONTING' && (
+                        {renderJenisBadge(selectedPengumuman.jenis_pengumuman || selectedPengumuman.tipe_pesan)}
+                        {selectedPengumuman.target_penerima === 'ALL_FRONTING' && (
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-100 text-purple-700">Broadcast Khusus Fronting</span>
                         )}
-                        {selectedPengumuman.penerima_nik === 'ALL_NON_FRONTING' && (
+                        {selectedPengumuman.target_penerima === 'ALL_NON_FRONTING' && (
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-700">Broadcast Khusus Non-Fronting</span>
                         )}
-                        {selectedPengumuman.penerima_nik === 'ALL' && (
+                        {selectedPengumuman.target_penerima === 'ALL' && (
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-gray-100 text-gray-700">Broadcast Umum Seluruh Pegawai</span>
                         )}
                       </div>
-                      <h2 className="text-xl font-bold text-gray-800 mt-3">Surat / Pesan Masuk</h2>
+                      <h2 className="text-xl font-bold text-gray-800 mt-3">{selectedPengumuman.judul || 'Detail Pengumuman'}</h2>
                     </div>
                     <button onClick={() => setSelectedPengumuman(null)} className="text-sm text-gray-500 hover:text-indigo-600 underline font-medium">Kembali ke Daftar</button>
                   </div>
                   <div className="bg-gray-50 p-5 md:p-6 rounded-xl border border-gray-200">
                     <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 text-sm text-gray-500 border-b border-gray-200 pb-4 gap-2">
-                      <span>Dari: <strong className="text-gray-800 uppercase">{selectedPengumuman.pengirim_role}</strong></span>
-                      <span>Tanggal: {new Date(selectedPengumuman.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      <span>Dari: <strong className="text-gray-800 uppercase">{selectedPengumuman.pengirim_role || 'Manajemen'}</strong></span>
+                      <span>Tanggal: {selectedPengumuman.created_at ? new Date(selectedPengumuman.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</span>
                     </div>
-                    <p className="text-gray-800 whitespace-pre-line leading-relaxed">{selectedPengumuman.konten}</p>
+                    <p className="text-gray-800 whitespace-pre-line leading-relaxed">{selectedPengumuman.konten || selectedPengumuman.isi}</p>
                   </div>
                   {selectedPengumuman.file_lampiran && (
                     <div className="mt-6">
@@ -1397,13 +1492,124 @@ function PegawaiDashboardContent() {
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8 text-center py-16">
-                <span className="text-5xl mb-4 block">📢</span>
-                <h3 className="text-xl font-bold text-gray-700 mb-2">Halaman {currentView.replace('-', ' ').toUpperCase()}</h3>
-                <p className="text-gray-500 mb-6 max-w-md mx-auto">Silakan pilih dan klik pesan melalui ikon lonceng notifikasi di pojok kanan atas untuk membaca detail pesan secara utuh.</p>
+            ) : (currentView === 'pengumuman-produk' || currentView === 'pengumuman-pribadi') ? (
+              <div className="space-y-6 animate-fade-in">
+                <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">
+                    {currentView === 'pengumuman-produk' ? '📦 Pengumuman Produk & Informasi' : '💌 Pesan & Pengumuman Pribadi'}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    {currentView === 'pengumuman-produk' 
+                      ? 'Kumpulan informasi terbaru mengenai produk, layanan, dan promo perusahaan.' 
+                      : 'Pesan, instruksi tugas, dan peringatan khusus yang ditujukan langsung kepada Anda.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {(() => {
+                    const filteredList = notifikasi.filter(notif => {
+                      const jenis = (notif.jenis_pengumuman || notif.tipe_pesan || '').toLowerCase();
+                      
+                      const isProdukInfo = jenis.includes('produk') || jenis.includes('informasi') || jenis.includes('produk_informasi');
+                      const isPribadi = jenis.includes('pribadi') || (!isProdukInfo && !jenis.includes('umum'));
+
+                      if (currentView === 'pengumuman-produk') return isProdukInfo;
+                      if (currentView === 'pengumuman-pribadi') return isPribadi;
+                      
+                      return false;
+                    });
+
+                    if (filteredList.length === 0) {
+                      return (
+                        <div className="bg-white rounded-xl shadow-sm p-12 text-center text-gray-500 border border-gray-100">
+                          <span className="text-4xl block mb-2">📭</span>
+                          Belum ada pesan / pengumuman di kategori ini.
+                        </div>
+                      );
+                    }
+
+                    return filteredList.map(notif => (
+                      <div 
+                        key={notif.id} 
+                        onClick={() => handleReadNotif(notif)} 
+                        className={`bg-white rounded-xl shadow-sm p-5 border cursor-pointer transition-all ${!notif.is_read ? 'border-blue-400 bg-blue-50/40 hover:bg-blue-50/70' : 'border-gray-100 hover:border-blue-300 hover:shadow-md'}`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {renderJenisBadge(notif.jenis_pengumuman || notif.tipe_pesan)}
+                            {!notif.is_read && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">Baru</span>}
+                          </div>
+                          <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">
+                            {notif.created_at ? new Date(notif.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                          </span>
+                        </div>
+                        
+                        <h3 className="text-sm font-bold text-gray-900 mb-1">{notif.judul || `Dari: ${notif.pengirim_role || 'Manajemen'}`}</h3>
+                        <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">{notif.konten || notif.isi}</p>
+                        
+                        {notif.file_lampiran && (
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center">
+                             <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">📎 Lihat Lampiran File</span>
+                          </div>
+                        )}
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
-            )}
+            ) : null}
+          </div>
+        )*/}
+        
+        {/* 7. TAMPILAN MENU PENGUMUMAN (UMUM, PRODUK, PRIBADI) */}
+        {currentView.includes('pengumuman') && (
+          <div className="max-w-4xl mx-auto">
+            
+            {selectedPengumuman ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                {/* Render Detail Pengumuman / Pesan */}
+                <div className="space-y-6 animate-fade-in">
+                  <div className="border-b border-gray-100 pb-4 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {renderJenisBadge(selectedPengumuman.jenis_pengumuman || selectedPengumuman.tipe_pesan)}
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-800 mt-3">{selectedPengumuman.judul || selectedPengumuman.tipe_pesan || 'Detail Informasi'}</h2>
+                    </div>
+                    <button onClick={() => setSelectedPengumuman(null)} className="text-sm text-gray-500 hover:text-indigo-600 underline font-medium">Kembali ke Daftar</button>
+                  </div>
+                  <div className="bg-gray-50 p-5 md:p-6 rounded-xl border border-gray-200">
+                    <p className="text-gray-800 whitespace-pre-line leading-relaxed">{selectedPengumuman.konten || selectedPengumuman.isi}</p>
+                  </div>
+                </div>
+              </div>
+            ) : currentView === 'pengumuman-umum' ? (
+              <PengumumanKategoriView 
+                isNonFronting={isNonFronting} 
+                kategoriFilter="UMUM" 
+                title="📢 Pengumuman Umum" 
+                subtitle="Informasi dan pengumuman penting terbaru dari manajemen pusat." 
+                onSelectPengumuman={(item) => setSelectedPengumuman(item)}
+              /> 
+            ) : currentView === 'pengumuman-produk' ? (
+              <PengumumanKategoriView 
+                isNonFronting={isNonFronting} 
+                kategoriFilter="PRODUK_INFORMASI" 
+                title="📦 Pengumuman Produk & Informasi" 
+                subtitle="Kumpulan informasi terbaru mengenai produk, layanan, dan promo perusahaan." 
+                onSelectPengumuman={(item) => setSelectedPengumuman(item)}
+              /> 
+            ) : currentView === 'pengumuman-pribadi' ? (
+              <PengumumanKategoriView 
+                isNonFronting={isNonFronting} 
+                kategoriFilter="PRIBADI" 
+                title="🔒 Pesan & Pengumuman Pribadi" 
+                subtitle="Pesan, instruksi tugas, dan peringatan khusus yang ditujukan langsung kepada Anda." 
+                onSelectPengumuman={(item) => setSelectedPengumuman(item)}
+                userNik={profile?.nik || session?.user?.name || ''}
+                notifikasiList={notifikasi}
+              /> 
+            ) : null}
           </div>
         )}
 
@@ -1460,9 +1666,5 @@ function PegawaiDashboardContent() {
 }
 
 export default function PegawaiDashboard() {
-  return (
-    <SessionProvider>
-      <PegawaiDashboardContent />
-    </SessionProvider>
-  );
+  return <PegawaiDashboardContent />;
 }

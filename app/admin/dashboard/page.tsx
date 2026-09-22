@@ -4,38 +4,21 @@ import AdminDashboardClient from '../AdminDashboardClient';
 // Sesuaikan path-nya, @/lib/db atau ../../lib/db tergantung struktur folder Anda
 import {pool} from '@/lib/db'; 
 
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+export const dynamic = "force-dynamic";
 
-const session = await getServerSession(authOptions);
-let loggedInJabatan = 'UMUM'; // fallback
-
-if (session?.user?.name) { // 'name' often stores the username in standard NextAuth, or session.user.username if customized
-   const [userRows]: any = await pool.query('SELECT jabatan FROM users WHERE username = ? LIMIT 1', [session.user.name]);
-   if (userRows.length > 0) {
-      loggedInJabatan = userRows[0].jabatan;
-   }
-}
+import { getServerSession } from 'next-auth';
+import { authOptions } from "@/lib/auth"; // Sesuaikan path import
 
 export default async function AdminPage() {
   
   try {
 
-    // 1. Ambil Sesi Login Aktif
+    // ✔️ Eksekusi terjadi pada saat HTTP request masuk (Runtime)
     const session = await getServerSession(authOptions);
-    let loggedInJabatan = 'admin'; // Default fallback
-
-    // 2. Query ke tabel users berdasarkan username yang login
+    
+    let loggedInJabatan = 'UMUM'; // fallback
     if (session?.user?.name) {
-      // Mengambil kolom jabatan dari tabel users dengan pencocokan username
-      const [userRows]: any = await pool.query(
-        'SELECT jabatan FROM users WHERE username = ? LIMIT 1', 
-        [session.user.name]
-      );
-      
-      if (userRows.length > 0) {
-        loggedInJabatan = userRows[0].jabatan;
-      }
+      // ekstrak role/jabatan dari session
     }
 
     const [rowsWilayah]: any = await pool.query('SELECT DISTINCT kanwil FROM master_wilayah');
