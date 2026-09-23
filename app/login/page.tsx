@@ -17,9 +17,18 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
 
+    // 1. VALIDASI MANUAL DI FRONTEND SEBELUM MENGIRIM REQUEST
+    const finalUsername = username.trim();
+    if (!finalUsername || !password) {
+      setError("Mohon isi username dan password Anda.");
+      setIsLoading(false);
+      return; // Hentikan fungsi di sini
+    }
+
+    // 2. Memanggil fungsi signIn menggunakan state yang sudah terjamin isinya
     const res = await signIn("credentials", {
       redirect: false,
-      username: username.trim(),
+      username: finalUsername,
       password: password,
     });
 
