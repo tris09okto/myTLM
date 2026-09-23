@@ -13,17 +13,23 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         try {
-          if (!credentials?.username || !credentials?.password) {
-            console.error("DEBUG AUTH: Field username atau password kosong dari payload NextAuth.");
+          console.log("=== DEBUG RAW CREDENTIALS ===");
+          console.log(credentials);
+          console.log("=============================");
+
+          // 2. Gunakan pengecekan tipe data eksplisit, bukan sekadar truthy/falsy
+          if (typeof credentials?.username !== 'string' || typeof credentials?.password !== 'string') {
+            console.error("DEBUG AUTH: Kredensial tidak valid atau tidak terbaca dari body request.");
             return null;
           }
 
           const payload = {
-            username: String(credentials.username),
-            password: String(credentials.password)
+            username: credentials.username.trim(),
+            password: credentials.password
           };
 
           const parsedCredentials = parseCredentials(payload);
+          
           if (!parsedCredentials) {
             console.error("DEBUG AUTH: Kredensial gagal diparsing oleh parseCredentials.");
             return null;
