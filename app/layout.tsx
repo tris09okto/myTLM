@@ -13,19 +13,20 @@ export const metadata: Metadata = {
 // app/layout.tsx
 import './globals.css'
 
+import { Suspense } from 'react';
+
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    // Add the warning suppression here
-    <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>
-        <Providers>
+    <html lang="en">
+      <body>
+        <Suspense fallback={<div>Loading...</div>}>
           {children}
-        </Providers>
+        </Suspense>
       </body>
     </html>
-  )
+  );
 }
