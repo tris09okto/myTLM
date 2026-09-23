@@ -2845,9 +2845,5 @@ function DashboardContent() {
 }
 
 export default function SuperAdminDashboard() {
-  return (
-    <SessionProvider>
-      <DashboardContent />
-    </SessionProvider>
-  );
+  return <DashboardContent />
 }
