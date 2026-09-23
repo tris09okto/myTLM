@@ -17,19 +17,16 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
 
-    // Memanggil fungsi signIn dari NextAuth
     const res = await signIn("credentials", {
       redirect: false,
-      username,
-      password,
+      username: username.trim(),
+      password: password,
     });
 
     if (res?.error) {
       setError("Username atau password yang Anda masukkan salah.");
       setIsLoading(false);
     } else {
-      // Jika berhasil, arahkan ke halaman utama (root). 
-      // Nanti kita akan buat logika pembagian halamannya di sana.
       router.push("/");
       router.refresh();
     }
