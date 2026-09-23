@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { writeFile, unlink } from "fs/promises";
 import path from "path";
-import bcrypt from "bcrypt";
+import bcrypt from 'bcryptjs';
 import { pool } from "@/lib/db";
 import nodemailer from "nodemailer";
 

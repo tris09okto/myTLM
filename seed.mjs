@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // 1. Konfigurasi koneksi database Anda (Sesuaikan dengan milik Anda)
 const pool = mysql.createPool({

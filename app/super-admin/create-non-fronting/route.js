@@ -3,7 +3,7 @@ import { pool } from '@/lib/db';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import fs from 'fs';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { sendAccountNotification } from '@/lib/mailer'; // <-- Import helper email
 
 export async function POST(req) {
