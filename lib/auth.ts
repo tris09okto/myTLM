@@ -12,41 +12,58 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        const parsedCredentials = parseCredentials(credentials);
+        try {
+          // 1. Parse kredensial
+          const parsedCredentials = parseCredentials(credentials);
+          if (!parsedCredentials) {
+            console.error("DEBUG AUTH: Kredensial gagal diparsing.");
+            return null;
+          }
 
-        if (!parsedCredentials) return null;
+          // 2. Autentikasi ke database
+          const user = await authenticateUser(parsedCredentials);
+          
+          if (!user) {
+            console.error("DEBUG AUTH: Kredensial tidak cocok atau user tidak ada.");
+            return null;
+          }
 
-        const user = await authenticateUser(parsedCredentials);
+          // 3. Mapping data (Wajib di dalam blok try)
+          // NextAuth mewajibkan 'id' bertipe string agar JWT bisa di-encode
+          return {
+            id: String(user.id),
+            name: user.username,
+            role: user.role,
+            jabatan: user.jabatan,
+          };
 
-        return user
-          ? {
-              id: String(user.id),
-              name: user.username,
-              role: user.role,
-              jabatan: user.jabatan,
-            }
-          : null;
+        } catch (error) {
+          // Menangkap error database (misal: timeout, ECONNREFUSED)
+          console.error("DEBUG AUTH FATAL ERROR:", error);
+          return null;
+        }
       }
     })
   ],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role;
-        token.jabatan = user.jabatan;
+        // Tipe 'user' di sini sekarang berasal dari return blok try di atas
+        token.role = (user as any).role;
+        token.jabatan = (user as any).jabatan;
       }
       return token;
     },
     async session({ session, token }) {
       if (session?.user) {
-        session.user.role = token.role;
-        session.user.jabatan = token.jabatan;
+        (session.user as any).role = token.role;
+        (session.user as any).jabatan = token.jabatan;
       }
       return session;
     }
   },
   pages: {
-    signIn: '/login', // Arahkan ke custom halaman login Anda
+    signIn: '/login', 
   },
   session: {
     strategy: "jwt",
