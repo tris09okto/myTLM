@@ -1,8 +1,7 @@
 // lib/auth.ts
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { pool } from "@/lib/db";
-import bcrypt from 'bcryptjs';
+import { authenticateUser, parseCredentials } from "@/lib/credentials";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,25 +12,20 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null;
+        const parsedCredentials = parseCredentials(credentials);
 
-        const [rows]: any = await pool.query(
-          "SELECT * FROM users WHERE username = ?",
-          [credentials.username]
-        );
+        if (!parsedCredentials) return null;
 
-        const user = rows[0];
+        const user = await authenticateUser(parsedCredentials);
 
-        if (user && await bcrypt.compare(credentials.password, user.password)) {
-          // Kembalikan data user beserta role dan jabatan ke dalam session
-          return {
-            id: user.id.toString(),
-            name: user.username,
-            role: user.role,
-            jabatan: user.jabatan,
-          };
-        }
-        return null;
+        return user
+          ? {
+              id: String(user.id),
+              name: user.username,
+              role: user.role,
+              jabatan: user.jabatan,
+            }
+          : null;
       }
     })
   ],
