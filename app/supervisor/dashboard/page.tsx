@@ -1059,9 +1059,5 @@ function SupervisorDashboardContent() {
 }
 
 export default function SupervisorDashboard() {
-  return (
-    <SessionProvider>
-      <SupervisorDashboardContent />
-    </SessionProvider>
-  );
+  return <SupervisorDashboardContent />
 }
