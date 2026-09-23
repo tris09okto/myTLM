@@ -1,7 +1,5 @@
-const nextConfig = {
-  experimental: {
-    instrumentationHook: true,
-  },
-};
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
