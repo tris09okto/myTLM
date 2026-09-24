@@ -4,9 +4,10 @@ import {pool} from '@/lib/db'; // Sesuaikan path koneksi database Anda
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { id_pegawai } = body;
+    const { id_pegawai, employee_kind } = body;
 
-    if (!id_pegawai) {
+    if (!Number.isSafeInteger(id_pegawai) || id_pegawai <= 0 ||
+        !['fronting', 'non_fronting', 'leader'].includes(employee_kind)) {
       return NextResponse.json({ success: false, message: 'ID Pegawai tidak ditemukan' }, { status: 400 });
     }
 
@@ -20,8 +21,8 @@ export async function POST(request) {
     const [updateResult] = await pool.query(
       `UPDATE transaksi_gaji 
        SET estimasi_shared = 1 
-       WHERE id_pegawai = ? AND periode = ?`,
-      [id_pegawai, periodeSaatIni]
+       WHERE employee_kind = ? AND id_pegawai = ? AND periode = ?`,
+      [employee_kind, id_pegawai, periodeSaatIni]
     );
 
     // Jika baris data gaji belum ada
@@ -37,10 +38,12 @@ export async function POST(request) {
     // ====================================================================
     
     // Cari NIK pegawai karena tabel notifikasi Anda menggunakan acuan NIK
-    const [pegawai] = await pool.query(
-      `SELECT nik FROM master_pegawai WHERE id = ? LIMIT 1`,
-      [id_pegawai]
-    );
+    const identityQuery = employee_kind === 'fronting'
+      ? 'SELECT nik FROM master_pegawai WHERE id = ? LIMIT 1'
+      : employee_kind === 'non_fronting'
+        ? 'SELECT nik FROM data_non_fronting WHERE id = ? LIMIT 1'
+        : 'SELECT username AS nik FROM data_leader WHERE id = ? LIMIT 1';
+    const [pegawai] = await pool.query(identityQuery, [id_pegawai]);
 
     if (pegawai.length > 0) {
       const nikTarget = pegawai[0].nik;

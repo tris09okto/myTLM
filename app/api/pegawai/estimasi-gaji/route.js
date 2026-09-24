@@ -28,7 +28,7 @@ export async function GET(request) {
         tg.slip_name,
         tg.slip_sent
       FROM transaksi_gaji tg
-      JOIN master_pegawai mp ON tg.id_pegawai = mp.id
+      JOIN master_pegawai mp ON tg.id_pegawai = mp.id AND tg.employee_kind = 'fronting'
       WHERE mp.nik = ? AND tg.periode = ?
       LIMIT 1
     `, [nik, periodeSaatIni]);

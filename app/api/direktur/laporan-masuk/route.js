@@ -1,32 +1,31 @@
 import { NextResponse } from 'next/server';
-import {pool} from '@/lib/db'; // Sesuaikan path koneksi database Anda
+import { getServerSession } from 'next-auth/next';
 
-export async function GET(request) {
+import { authOptions } from '@/lib/auth';
+import { pool } from '@/lib/db';
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (session?.user?.role !== 'admin' || session.user.jabatan?.toLowerCase() !== 'direktur') {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    // Ambil semua pesan/laporan yang ditujukan untuk DIREKTUR
-    // (Berdasarkan nik_tujuan bernilai 'DIREKTUR' atau pengirim dari role terkait)
     const [rows] = await pool.query(`
-      SELECT 
-        id,
-        pengirim_role,
-        tipe_pesan,
-        konten,
-        file_lampiran,
-        file_sanggahan,
-        tanggapan_direktur,
-        created_at,
-        is_read
-      FROM notifikasi
-      WHERE nik_tujuan = 'DIREKTUR' OR tipe_pesan LIKE '%Laporan ke Direktur%'
-      ORDER BY created_at DESC
+      SELECT p.id, p.pengirim_role, p.tipe_pesan, p.konten, p.file_lampiran,
+             p.created_at, p.is_read,
+             (SELECT r.konten FROM pesan_notifikasi r
+              WHERE r.tipe_pesan = CONCAT('Balasan Direktur #', p.id)
+              ORDER BY r.id DESC LIMIT 1) AS tanggapan_direktur,
+             (SELECT r.file_lampiran FROM pesan_notifikasi r
+              WHERE r.tipe_pesan = CONCAT('Balasan Direktur #', p.id)
+              ORDER BY r.id DESC LIMIT 1) AS file_sanggahan
+      FROM pesan_notifikasi p
+      WHERE p.penerima_nik = 'DIREKTUR' OR p.tipe_pesan LIKE '%Laporan ke Direktur%'
+      ORDER BY p.created_at DESC
     `);
-
     return NextResponse.json({ success: true, data: rows });
-  } catch (error) {
-    console.error("Gagal mengambil laporan masuk direktur:", error);
-    return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan pada server' }, 
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({ success: false, message: 'Gagal memuat laporan Direktur' }, { status: 500 });
   }
 }

@@ -30,6 +30,7 @@ export async function POST(req) {
     const tanggal_lahir = formData.get('tanggal_lahir');
     const no_whatsapp = formData.get('no_whatsapp');
     const username = formData.get('username');
+    const supervisor = formData.get('supervisor') || null;
     const plainPassword = formData.get('password'); // Password asli dari input form
 
     // -- 2. ENCRYPT PASSWORD MENGGUNAKAN BCRYPT --
@@ -94,9 +95,9 @@ export async function POST(req) {
     // 3. Simpan Profil Lengkap
     await connection.query(
       `INSERT INTO data_non_fronting 
-      (nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, pas_foto, surat_tugas, username, password) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, fotoName, stName, username, hashedPassword]
+      (nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, pas_foto, surat_tugas, username, password, supervisor) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, fotoName, stName, username, hashedPassword, supervisor]
     );
 
     await connection.commit();

@@ -32,17 +32,17 @@ const sanitizeMatch = (str: any) => String(str || '').replace(/[^a-zA-Z0-9]/g, '
 async function tambahEstimasiGaji(connection: any, idPegawai: number, periode: string, nilai: number) {
   if (nilai <= 0) return;
   const [gajiExist]: any = await connection.query(
-    `SELECT id FROM transaksi_gaji WHERE id_pegawai = ? AND periode = ? LIMIT 1`, 
+    `SELECT id FROM transaksi_gaji WHERE employee_kind = 'fronting' AND id_pegawai = ? AND periode = ? LIMIT 1`, 
     [idPegawai, periode]
   );
   if (gajiExist.length > 0) {
     await connection.query(
-      `UPDATE transaksi_gaji SET estimasi = estimasi + ? WHERE id_pegawai = ? AND periode = ?`, 
+      `UPDATE transaksi_gaji SET estimasi = estimasi + ? WHERE employee_kind = 'fronting' AND id_pegawai = ? AND periode = ?`, 
       [nilai, idPegawai, periode]
     );
   } else {
     await connection.query(
-      `INSERT INTO transaksi_gaji (id_pegawai, periode, estimasi, estimasi_shared, slip_sent) VALUES (?, ?, ?, 0, 0)`, 
+      `INSERT INTO transaksi_gaji (employee_kind, id_pegawai, periode, estimasi, estimasi_shared, slip_sent) VALUES ('fronting', ?, ?, ?, 0, 0)`, 
       [idPegawai, periode, nilai]
     );
   }
@@ -216,18 +216,6 @@ export async function POST(request: Request) {
 
             await connection.query(`UPDATE entri_data_perkiraan_pemasukan SET ${updateFields.join(', ')} WHERE id = ?`, updateValues);
 
-            // Jika Nominal UP berbeda, hitung selisihnya ke transaksi_gaji
-            if (!isUpSame && idPegawai) {
-              const selisihUp = finalUpPengajuan - dbUpPengajuan; 
-              const [gajiExist]: any = await connection.query(`SELECT id FROM transaksi_gaji WHERE id_pegawai = ? AND periode = ? LIMIT 1`, [idPegawai, periodeSaatIni]);
-
-              if (gajiExist.length > 0) {
-                await connection.query(`UPDATE transaksi_gaji SET estimasi = estimasi + ? WHERE id_pegawai = ? AND periode = ?`, [selisihUp, idPegawai, periodeSaatIni]);
-              } else if (finalUpPengajuan > 0) {
-                await connection.query(`INSERT INTO transaksi_gaji (id_pegawai, periode, estimasi, estimasi_shared, slip_sent) VALUES (?, ?, ?, 0, 0)`, [idPegawai, periodeSaatIni, finalUpPengajuan]);
-              }
-            }
-
             // ====================================================================
             // LOGIKA GAJI SAAT UPDATE: 
             // Tambahkan estimasi ke user HANYA JIKA status dari Excel adalah Close 
@@ -252,15 +240,6 @@ export async function POST(request: Request) {
           ]);
 
           insertedCount++;
-
-          if (idPegawai && finalUpPengajuan > 0) {
-            const [gajiExist]: any = await connection.query(`SELECT id FROM transaksi_gaji WHERE id_pegawai = ? AND periode = ? LIMIT 1`, [idPegawai, periodeSaatIni]);
-            if (gajiExist.length > 0) {
-              await connection.query(`UPDATE transaksi_gaji SET estimasi = estimasi + ? WHERE id_pegawai = ? AND periode = ?`, [finalUpPengajuan, idPegawai, periodeSaatIni]);
-            } else {
-              await connection.query(`INSERT INTO transaksi_gaji (id_pegawai, periode, estimasi, estimasi_shared, slip_sent) VALUES (?, ?, ?, 0, 0)`, [idPegawai, periodeSaatIni, finalUpPengajuan]);
-            }
-          }
 
           // ====================================================================
           // LOGIKA GAJI SAAT INSERT BARU: 

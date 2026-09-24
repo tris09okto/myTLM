@@ -2327,7 +2327,7 @@ function DashboardContent() {
               onClick={async () => {
                 if (confirm("Apakah Anda yakin ingin mengosongkan data perkiraan pemasukan dan transaksi gaji sekarang?")) {
                   try {
-                    const res = await fetch('/api/super-admin/reset-tables', { method: 'POST' });
+                    const res = await fetch('/super-admin/reset-table', { method: 'POST' });
                     const result = await res.json();
                     if (result.success) {
                       setSuccessMessage(result.message);

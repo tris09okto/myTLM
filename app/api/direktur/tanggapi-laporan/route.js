@@ -1,51 +1,58 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { NextResponse } from 'next/server';
-import {pool} from '@/lib/db';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getServerSession } from 'next-auth/next';
+
+import { authOptions } from '@/lib/auth';
+import { pool } from '@/lib/db';
 
 export async function POST(request) {
+  const session = await getServerSession(authOptions);
+  if (session?.user?.role !== 'admin' || session.user.jabatan?.toLowerCase() !== 'direktur') {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+  const form = await request.formData();
+  const id = Number(form.get('id'));
+  const answer = form.get('tanggapan');
+  const file = form.get('file_sanggahan');
+  if (!Number.isSafeInteger(id) || id <= 0 || typeof answer !== 'string' || !answer.trim() ||
+      answer.length > 10000 || (file !== null && (!(file instanceof File) || file.size > 10_000_000))) {
+    return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
+  }
+
   try {
-    const formData = await request.formData();
-    const id = formData.get('id');
-    const tanggapan = formData.get('tanggapan');
-    const fileSanggahan = formData.get('file_sanggahan');
-
-    if (!id || !tanggapan) {
-      return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
+    const [reports] = await pool.query(
+      `SELECT pengirim_role FROM pesan_notifikasi
+       WHERE id = ? AND penerima_nik = 'DIREKTUR' LIMIT 1`, [id]
+    );
+    if (!reports[0]) return NextResponse.json({ success: false, message: 'Laporan tidak ditemukan' }, { status: 404 });
+    let fileName = null;
+    if (file instanceof File && file.size > 0) {
+      fileName = `${randomUUID()}${path.extname(file.name).replace(/[^.a-zA-Z0-9]/g, '').slice(0, 12)}`;
+      const folder = path.join(process.cwd(), 'public', 'uploads', 'laporan-direktur');
+      await mkdir(folder, { recursive: true });
+      await writeFile(path.join(folder, fileName), Buffer.from(await file.arrayBuffer()));
     }
-
-    let safeFileName = null;
-
-    // Jika Direktur mengunggah file sanggahan/balasan
-    if (fileSanggahan && typeof fileSanggahan === 'object') {
-      const uploadDir = path.join(process.cwd(), 'public/uploads/laporan-direktur');
-      await fs.mkdir(uploadDir, { recursive: true });
-
-      safeFileName = `sanggahan_${Date.now()}_${fileSanggahan.name.replace(/\s+/g, '_')}`;
-      const filePath = path.join(uploadDir, safeFileName);
-
-      const bytes = await fileSanggahan.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      await fs.writeFile(filePath, buffer);
-    }
-
-    // Update data tanggapan di database
-    if (safeFileName) {
-      await pool.query(
-        `UPDATE notifikasi SET tanggapan_direktur = ?, file_sanggahan = ?, is_read = 1 WHERE id = ?`,
-        [tanggapan, safeFileName, id]
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        `INSERT INTO pesan_notifikasi
+         (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
+         VALUES ('Direktur', ?, ?, ?, ?, 0)`,
+        [reports[0].pengirim_role, `Balasan Direktur #${id}`, answer.trim(), fileName]
       );
-    } else {
-      await pool.query(
-        `UPDATE notifikasi SET tanggapan_direktur = ?, is_read = 1 WHERE id = ?`,
-        [tanggapan, id]
-      );
+      await connection.query('UPDATE pesan_notifikasi SET is_read = 1 WHERE id = ?', [id]);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
-
-    return NextResponse.json({ success: true, message: 'Tanggapan berhasil disimpan' });
-
-  } catch (error) {
-    console.error("Gagal menyimpan tanggapan direktur:", error);
-    return NextResponse.json({ success: false, message: 'Kesalahan internal server' }, { status: 500 });
+    return NextResponse.json({ success: true, message: 'Tanggapan berhasil dikirim' });
+  } catch {
+    return NextResponse.json({ success: false, message: 'Gagal mengirim tanggapan' }, { status: 500 });
   }
 }
