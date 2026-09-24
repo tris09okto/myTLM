@@ -100,7 +100,10 @@ export async function POST(req: Request) {
         [id]
       ) as [any, any];
 
-      const oldLeader = oldRows[0] || {};
+      const oldLeader = oldRows[0];
+      if (!oldLeader) {
+        return NextResponse.json({ error: "Leader tidak ditemukan" }, { status: 404 });
+      }
       const emailChanged = oldLeader.email !== email;
       const usernameChanged = oldLeader.username !== username;
       const passwordChanged = password && password.trim() !== "";
@@ -130,19 +133,29 @@ export async function POST(req: Request) {
       query += ` WHERE id = ?`;
       queryParams.push(id);
 
-      await pool.query(query, queryParams);
-
-      if (username) {
-        try {
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        await connection.query(query, queryParams);
+        if (username) {
           if (hashedPassword) {
-            await pool.query(
-              `UPDATE users SET password = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
-              [hashedPassword, username]
+            await connection.query(
+              `UPDATE users SET username = ?, password = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
+              [username, hashedPassword, oldLeader.username]
+            );
+          } else {
+            await connection.query(
+              `UPDATE users SET username = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
+              [username, oldLeader.username]
             );
           }
-        } catch (userErr) {
-          console.error("Catatan: Gagal sinkron ke tabel users pusat:", userErr);
         }
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
       }
 
       if (emailChanged || usernameChanged || passwordChanged) {
@@ -154,10 +167,10 @@ export async function POST(req: Request) {
     } 
     // --- PROSES INSERT / TAMBAH LEADER BARU DARI FORM ---
     else {
-      let hashedPassword = null;
-      if (password && password.trim() !== "") {
-        hashedPassword = await bcrypt.hash(password, 10);
+      if (!username?.trim() || !password?.trim()) {
+        return NextResponse.json({ error: "Username dan password wajib diisi" }, { status: 400 });
       }
+      const hashedPassword = await bcrypt.hash(password, 10);
 
       const query = `
         INSERT INTO data_leader (nama_leader, kanwil, area, penempatan, email, idcard_file, username, password) 
@@ -165,18 +178,29 @@ export async function POST(req: Request) {
       `;
       const values = [namaLeader, kanwilStr, areaStr, penempatanStr, email, idCardName, username, hashedPassword];
 
-      const [result] = await pool.query(query, values);
-
-      if (username && hashedPassword) {
-        try {
-          await pool.query(
-            `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'leader', 'leader') 
-             ON DUPLICATE KEY UPDATE password = ?, jabatan = 'leader', role = 'leader'`,
-            [username, hashedPassword, hashedPassword]
-          );
-        } catch (userErr) {
-          console.error("Catatan: Gagal insert ke tabel users pusat:", userErr);
+      const connection = await pool.getConnection();
+      let result;
+      try {
+        await connection.beginTransaction();
+        const [existingUsers] = await connection.query(
+          `SELECT username FROM users WHERE username = ? LIMIT 1`,
+          [username]
+        ) as [Array<{ username: string }>, unknown];
+        if (existingUsers.length) {
+          await connection.rollback();
+          return NextResponse.json({ error: "Username sudah digunakan" }, { status: 409 });
         }
+        [result] = await connection.query(query, values);
+        await connection.query(
+          `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'leader', 'leader')`,
+          [username, hashedPassword]
+        );
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
       }
 
       if (email && username) {

@@ -8,8 +8,11 @@ export async function POST(request) {
     const formData = await request.formData();
     const file = formData.get('file');
     const idPegawai = formData.get('id_pegawai');
+    const employeeKind = formData.get('employee_kind');
 
-    if (!file || !idPegawai) {
+    if (!(file instanceof File) || file.type !== 'application/pdf' || file.size > 10_000_000 ||
+        !Number.isSafeInteger(Number(idPegawai)) || Number(idPegawai) <= 0 ||
+        !['fronting', 'non_fronting', 'leader'].includes(employeeKind)) {
       return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
     }
 
@@ -25,7 +28,7 @@ export async function POST(request) {
 
     // 3. Modifikasi Nama File (Agar tidak bentrok jika namanya sama)
     // Format: IDPegawai_Periode_NamaAsli.pdf
-    const safeFileName = `${idPegawai}_${periodeSaatIni}_${file.name.replace(/\s+/g, '_')}`;
+    const safeFileName = `${employeeKind}_${idPegawai}_${periodeSaatIni}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const filePath = path.join(uploadDir, safeFileName);
 
     // 4. Tulis File ke Server
@@ -38,17 +41,17 @@ export async function POST(request) {
     const [result] = await pool.query(
       `UPDATE transaksi_gaji 
        SET slip_name = ?, slip_sent = 1 
-       WHERE id_pegawai = ? AND periode = ?`,
-      [safeFileName, idPegawai, periodeSaatIni]
+       WHERE employee_kind = ? AND id_pegawai = ? AND periode = ?`,
+      [safeFileName, employeeKind, idPegawai, periodeSaatIni]
     );
 
     if (result.affectedRows === 0) {
       // Jika baris tidak ditemukan (estimasi belum dibuat), buatkan baris baru
       await pool.query(
         `INSERT INTO transaksi_gaji 
-         (id_pegawai, periode, estimasi, estimasi_shared, slip_name, slip_sent) 
-         VALUES (?, ?, 0, 0, ?, 1)`,
-        [idPegawai, periodeSaatIni, safeFileName]
+         (id_pegawai, employee_kind, periode, estimasi, estimasi_shared, slip_name, slip_sent) 
+         VALUES (?, ?, ?, 0, 0, ?, 1)`,
+        [idPegawai, employeeKind, periodeSaatIni, safeFileName]
       );
     }
 

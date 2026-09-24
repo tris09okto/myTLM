@@ -6,17 +6,17 @@ export async function POST(req) {
     const body = await req.json();
     const { nik, nama, unit_kerja, lokasi, jenis_absen } = body; // jenis_absen: 'Masuk' atau 'Pulang'
 
-    if (!nik || !jenis_absen) {
+    if (!nik || (jenis_absen !== 'Masuk' && jenis_absen !== 'Pulang')) {
       return NextResponse.json({ success: false, error: 'Data tidak lengkap' }, { status: 400 });
     }
 
     // 1. Ambil username supervisor dari tabel data_non_fronting
     const [pegawaiRows] = await pool.query(`
       SELECT 
-        p.supervisor AS supervisor_username, 
+        COALESCE(s.username, p.supervisor) AS supervisor_username,
         s.nama AS nama_supervisor 
       FROM data_non_fronting p
-      LEFT JOIN data_non_fronting s ON p.supervisor = s.username
+      LEFT JOIN data_non_fronting s ON p.supervisor = s.username OR p.supervisor = s.nama
       WHERE p.nik = ? 
       LIMIT 1
     `, [nik]);
@@ -34,7 +34,7 @@ export async function POST(req) {
 
     // 2. Cek apakah pegawai sudah melakukan absensi hari ini (maksimal sekali sehari)
     const [existingAbsen] = await pool.query(
-      `SELECT id FROM master_absensi WHERE nik = ? AND DATE(created_at) = CURDATE() LIMIT 1`,
+      `SELECT id, waktu_keluar FROM absensi WHERE nik = ? AND tanggal = CURDATE() LIMIT 1`,
       [nik]
     );
 

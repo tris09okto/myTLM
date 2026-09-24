@@ -207,6 +207,7 @@ export default function FinanceDashboardClient({
       if (pegData.success) {
         const formattedData = pegData.data.map((emp: any) => ({
           id: emp.id,
+          employee_kind: emp.employee_kind,
           nama: emp.nama,
           nik: emp.nik,
           jenis_pegawai: emp.jenis_pegawai,
@@ -269,13 +270,13 @@ export default function FinanceDashboardClient({
     fetchEmployees(keyword);
   };
 
-  const handleSaveEstimasi = async (idPegawai: number, nilaiBaru: number) => {
+  const handleSaveEstimasi = async (idPegawai: number, employeeKind: string, nilaiBaru: number) => {
     setSavingId(idPegawai);
     try {
       const res = await fetch('/api/keuangan/update-estimasi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_pegawai: idPegawai, estimasi: Number(nilaiBaru) }),
+        body: JSON.stringify({ id_pegawai: idPegawai, employee_kind: employeeKind, estimasi: Number(nilaiBaru) }),
       });
       const data = await res.json();
       if (data.success) {
@@ -306,6 +307,7 @@ export default function FinanceDashboardClient({
         if (pegData.success) {
           const formattedData = pegData.data.map((emp: any) => ({
             id: emp.id,
+            employee_kind: emp.employee_kind,
             nama: emp.nama,
             nik: emp.nik,
             jenis_pegawai: emp.jenis_pegawai,
@@ -334,24 +336,24 @@ export default function FinanceDashboardClient({
     setEmployees(employees.map(emp => emp.id === id ? { ...emp, estimasi: Number(value) } : emp));
   };
 
-  const handleShareEstimasi = async (id: number) => {
+  const handleShareEstimasi = async (id: number, employeeKind: string) => {
     const isConfirmed = window.confirm("Apakah Anda yakin ingin membagikan estimasi gaji ini?");
     if (!isConfirmed) return;
 
     // Cari data pegawai berdasarkan ID untuk mendapatkan nama dan NIK-nya
-    const emp = employees.find(e => e.id === id);
+    const emp = employees.find(e => e.id === id && e.employee_kind === employeeKind);
     if (!emp) return;
 
     try {
       const res = await fetch('/api/keuangan/share-estimasi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_pegawai: id }),
+        body: JSON.stringify({ id_pegawai: id, employee_kind: employeeKind }),
       });
       const data = await res.json();
       
       if (data.success) {
-        setEmployees(employees.map(e => e.id === id ? { ...e, estimasiShared: true } : e));
+        setEmployees(employees.map(e => e.id === id && e.employee_kind === employeeKind ? { ...e, estimasiShared: true } : e));
         
         // ==============================================================
         // TAMBAHAN: KIRIM NOTIFIKASI OTOMATIS KE AKUN PEGAWAI
@@ -379,17 +381,17 @@ export default function FinanceDashboardClient({
     }
   };
 
-  const handleUploadSlip = (nik: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadSlip = (id: number, employeeKind: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Perhatikan kita mencocokkan e.nik === nik, bukan lagi id
-      setEmployees(employees.map(emp => emp.nik === nik ? { ...emp, slipName: file.name, rawFile: file } : emp));
+      setEmployees(employees.map(emp => emp.id === id && emp.employee_kind === employeeKind ? { ...emp, slipName: file.name, rawFile: file } : emp));
     }
   };
 
   // UBAH FUNGSI INI
-  const handleSendSlip = async (nik: string) => {
-    const emp = employees.find(e => e.nik === nik);
+  const handleSendSlip = async (id: number, employeeKind: string) => {
+    const emp = employees.find(e => e.id === id && e.employee_kind === employeeKind);
     if (!emp || !emp.rawFile) {
       alert("Silakan unggah file PDF terlebih dahulu!");
       return;
@@ -399,6 +401,7 @@ export default function FinanceDashboardClient({
     const formData = new FormData();
     formData.append('file', emp.rawFile);
     formData.append('id_pegawai', String(emp.id)); // Tetap kirim id untuk backend
+    formData.append('employee_kind', emp.employee_kind);
     formData.append('nik_pegawai', emp.nik);       // Opsional: Kirim NIK juga untuk jaga-jaga
 
     try {
@@ -407,7 +410,7 @@ export default function FinanceDashboardClient({
       
       if (data.success) {
         // Perhatikan kita mencocokkan e.nik === nik
-        setEmployees(employees.map(e => e.nik === nik ? { ...e, slipSent: true, slipName: data.fileName } : e));
+        setEmployees(employees.map(e => e.id === id && e.employee_kind === employeeKind ? { ...e, slipSent: true, slipName: data.fileName } : e));
         
         // ==============================================================
         // TAMBAHAN: KIRIM NOTIFIKASI OTOMATIS KE AKUN PEGAWAI
@@ -729,12 +732,12 @@ export default function FinanceDashboardClient({
                         {emp.slipName ? (
                           <span className="text-blue-600 text-sm">{emp.slipName}</span>
                         ) : (
-                          <input type="file" accept=".pdf" onChange={e => handleUploadSlip(emp.nik, e)} className="text-xs" />
+                          <input type="file" accept=".pdf" onChange={e => handleUploadSlip(emp.id, emp.employee_kind, e)} className="text-xs" />
                         )}
                       </td>
                       <td className="p-3 text-center">
                         <button 
-                          onClick={() => handleSendSlip(emp.nik)} 
+                          onClick={() => handleSendSlip(emp.id, emp.employee_kind)} 
                           disabled={!emp.slipName || emp.slipSent} 
                           className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
                         >

@@ -20,6 +20,7 @@ export async function GET(request) {
     let query = `
       SELECT 
         combined.id, 
+        combined.employee_kind,
         combined.nama, 
         combined.nik, 
         combined.jenis_pegawai, 
@@ -34,25 +35,28 @@ export async function GET(request) {
       FROM (
         -- 1. DATA PEGAWAI FRONTING (Dari master_pegawai)
         SELECT 
-          id, nama, nik, jenis_pegawai, nama_bank, norek, area, leader
+          id, nama, nik, jenis_pegawai, nama_bank, norek, area, leader,
+          'fronting' AS employee_kind
         FROM master_pegawai
         
         UNION ALL
         
         -- 2. DATA PEGAWAI NON-FRONTING
         SELECT 
-          id, nama, nik, 'Non-Fronting' as jenis_pegawai, NULL as nama_bank, NULL as norek, area_penempatan as area, supervisor as leader
+          id, nama, nik, 'Non-Fronting' as jenis_pegawai, NULL as nama_bank, NULL as norek, area_penempatan as area, supervisor as leader,
+          'non_fronting' AS employee_kind
         FROM data_non_fronting
         
         UNION ALL
         
         -- 3. DATA LEADER
         SELECT 
-          id, nama_leader as nama, username as nik, 'Leader' as jenis_pegawai, NULL as nama_bank, NULL as norek, area, NULL as leader
+          id, nama_leader as nama, username as nik, 'Leader' as jenis_pegawai, NULL as nama_bank, NULL as norek, area, NULL as leader,
+          'leader' AS employee_kind
         FROM data_leader
       ) AS combined
       LEFT JOIN transaksi_gaji tg 
-        ON combined.id = tg.id_pegawai AND tg.periode = ?
+        ON combined.id = tg.id_pegawai AND combined.employee_kind = tg.employee_kind AND tg.periode = ?
     `;
 
     const queryParams = [periodeSaatIni];

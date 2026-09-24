@@ -15,7 +15,7 @@ export async function GET(request: Request) {
         p.*, 
         t.estimasi 
       FROM master_pegawai p
-      LEFT JOIN transaksi_gaji t ON p.id = t.id_pegawai
+      LEFT JOIN transaksi_gaji t ON p.id = t.id_pegawai AND t.employee_kind = 'fronting'
       WHERE p.jenis_pegawai = 'fronting'
     `;
     
