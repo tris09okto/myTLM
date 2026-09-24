@@ -32,12 +32,14 @@ export function parseCredentials(value: unknown): Credentials | null {
     return null;
   }
 
-  const username = value.username;
-  const password = value.password;
+  // Gunakan String() untuk menjamin konversi tipe data jika dikirim dari NextAuth
+  const rawUsername = typeof value.username === "string" ? value.username : String(value.username || "");
+  const rawPassword = typeof value.password === "string" ? value.password : String(value.password || "");
+
+  const username = rawUsername.trim();
+  const password = rawPassword;
 
   if (
-    typeof username !== "string" ||
-    typeof password !== "string" ||
     username.length === 0 ||
     password.length === 0 ||
     username.length > 128 ||

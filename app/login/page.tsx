@@ -17,19 +17,25 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
 
-    // Memanggil fungsi signIn dari NextAuth
+    // 1. VALIDASI MANUAL DI FRONTEND SEBELUM MENGIRIM REQUEST
+    const finalUsername = username.trim();
+    if (!finalUsername || !password) {
+      setError("Mohon isi username dan password Anda.");
+      setIsLoading(false);
+      return; // Hentikan fungsi di sini
+    }
+
+    // 2. Memanggil fungsi signIn menggunakan state yang sudah terjamin isinya
     const res = await signIn("credentials", {
       redirect: false,
-      username,
-      password,
+      username: finalUsername,
+      password: password,
     });
 
     if (res?.error) {
       setError("Username atau password yang Anda masukkan salah.");
       setIsLoading(false);
     } else {
-      // Jika berhasil, arahkan ke halaman utama (root). 
-      // Nanti kita akan buat logika pembagian halamannya di sana.
       router.push("/");
       router.refresh();
     }

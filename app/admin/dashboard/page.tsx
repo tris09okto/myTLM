@@ -1,24 +1,30 @@
 import AdminDashboardClient from '../AdminDashboardClient';
 
-// 1. IMPORT KONEKSI DB DARI FILE YANG KITA BUAT DI LANGKAH 2
 // Sesuaikan path-nya, @/lib/db atau ../../lib/db tergantung struktur folder Anda
-import {pool} from '@/lib/db'; 
+import { pool } from '@/lib/db'; 
+
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-import { getServerSession } from 'next-auth';
-import { authOptions } from "@/lib/auth"; // Sesuaikan path import
-
 export default async function AdminPage() {
-  
   try {
-
-    // ✔️ Eksekusi terjadi pada saat HTTP request masuk (Runtime)
+    // 1. Ambil Sesi Login Aktif (Di dalam fungsi async)
     const session = await getServerSession(authOptions);
-    
-    let loggedInJabatan = 'UMUM'; // fallback
+    let loggedInJabatan = 'admin'; // Default fallback
+
+    // 2. Query ke tabel users berdasarkan username yang login
     if (session?.user?.name) {
-      // ekstrak role/jabatan dari session
+      // Mengambil kolom jabatan dari tabel users dengan pencocokan username
+      const [userRows]: any = await pool.query(
+        'SELECT jabatan FROM users WHERE username = ? LIMIT 1', 
+        [session.user.name]
+      );
+      
+      if (userRows.length > 0) {
+        loggedInJabatan = userRows[0].jabatan;
+      }
     }
 
     const [rowsWilayah]: any = await pool.query('SELECT DISTINCT kanwil FROM master_wilayah');
@@ -29,7 +35,7 @@ export default async function AdminPage() {
     );
     const frontingCount = Number(rowsFronting[0].total) || 0;
 
-      // 2. TAMBAHKAN: Ambil data jumlah dari tabel data_non_fronting berdasarkan unit_kerja
+    // Ambil data jumlah dari tabel data_non_fronting berdasarkan unit_kerja
     const [nonFrontingRows] = await pool.query(
       `SELECT unit_kerja, COUNT(*) as total FROM data_non_fronting GROUP BY unit_kerja`
     ) as [any[], any];
@@ -80,7 +86,7 @@ export default async function AdminPage() {
       penempatan: r.penempatan
     }));
 
-    // BARU: Ambil seluruh data master_wilayah untuk relasi cascading dropdown
+    // Ambil seluruh data master_wilayah untuk relasi cascading dropdown
     const [rowsMasterWilayah]: any = await pool.query(
       'SELECT kanwil, area, penempatan FROM master_wilayah WHERE kanwil IS NOT NULL AND area IS NOT NULL AND penempatan IS NOT NULL'
     );
@@ -89,12 +95,11 @@ export default async function AdminPage() {
       <AdminDashboardClient 
         areaList={areaList} 
         frontingCount={frontingCount} 
-        nonFrontingCounts={counts} // 3. KIRIMKAN HASIL PERHITUNGAN KE KOMPONEN CLIENT
+        nonFrontingCounts={counts} 
         dataLeaders={dataLeaders}
-        masterWilayah={rowsMasterWilayah} // Kirim master wilayah utuh ke client
-        dataJabatan={rowsJabatan}
+        masterWilayah={rowsMasterWilayah} 
+        dataJabatan={dataJabatan}
         listPegawai={listPegawai}
-        // BARU: Kirim jabatan asli user yang login ke Client
         loggedInJabatan={loggedInJabatan}
       />
     );
@@ -110,5 +115,4 @@ export default async function AdminPage() {
       </div>
     );
   }
-  
 }

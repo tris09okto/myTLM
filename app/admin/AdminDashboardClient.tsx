@@ -94,7 +94,7 @@ const AnimatedNumber = ({ endValue }: { endValue: number }) => {
   return <span>{count}</span>;
 };
 
-export default async function AdminDashboardClient({ 
+export default function AdminDashboardClient({ 
   areaList = [], 
   frontingCount = 0, 
   dataLeaders = [],
