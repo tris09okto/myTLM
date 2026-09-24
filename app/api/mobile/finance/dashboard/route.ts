@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
+import { NextResponse } from "next/server";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const principal = await getMobilePrincipal(request);
-  if (!principal || principal.role !== "keuangan") {
+  if (!principal || !["keuangan", "super_admin"].includes(principal.role)) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -37,6 +37,9 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({ employees, income });
   } catch {
-    return NextResponse.json({ message: "Unable to load finance dashboard" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Unable to load finance dashboard" },
+      { status: 500 },
+    );
   }
 }
