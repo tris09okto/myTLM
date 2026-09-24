@@ -846,9 +846,5 @@ function LeaderDashboardContent() {
 }
 
 export default function LeaderDashboard() {
-  return (
-    <SessionProvider>
-      <LeaderDashboardContent />
-    </SessionProvider>
-  );
+  return <LeaderDashboardContent />
 }

@@ -20,6 +20,7 @@
     "@types/react-dom": "^19",
     "ai": "^7.0.66",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "jose": "^6.2.12",

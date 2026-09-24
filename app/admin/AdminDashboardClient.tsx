@@ -321,11 +321,28 @@ export default function AdminDashboardClient({
     )
   );
 
-  const parseJsonString = (str: string): string[] => {
+  /*const parseJsonString = (str: string): string[] => {
     if (!str) return [];
     try {
       const parsed = JSON.parse(str);
       if (Array.isArray(parsed)) return parsed;
+      return [str];
+    } catch (e) {
+      return [str.replace(/[\[\]"]/g, '').trim()];
+    }
+  };*/
+  const parseJsonString = (str: any): string[] => {
+    if (!str) return [];
+    if (typeof str !== 'string') {
+      try {
+        return [String(str)];
+      } catch (e) {
+        return [];
+      }
+    }
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) return parsed.map(item => String(item));
       return [str];
     } catch (e) {
       return [str.replace(/[\[\]"]/g, '').trim()];
@@ -396,6 +413,17 @@ export default function AdminDashboardClient({
     }
   };
 
+  /*const handleSearchLeaderByKanwil = () => {
+    if (!selectedKanwilGarapan) {
+      alert('Silahkan pilih Kanwil terlebih dahulu!');
+      return;
+    }
+    const results = dataLeaders.filter(leader => {
+      const parsedKanwilArray = parseJsonString(leader.kanwil).map(k => k.toLowerCase());
+      return parsedKanwilArray.includes(selectedKanwilGarapan.toLowerCase());
+    });
+    setLeaderResults(results);
+  };*/
   const handleSearchLeaderByKanwil = () => {
     if (!selectedKanwilGarapan) {
       alert('Silahkan pilih Kanwil terlebih dahulu!');
