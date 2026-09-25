@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Konfigurasi Cloudinary (Otomatis mengambil dari environment variables)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(request: Request) {
   try {
@@ -12,26 +20,55 @@ export async function POST(request: Request) {
     const konten = formData.get('konten') as string;
     const fileLampiran = formData.get('file_lampiran');
 
-    let safeFileName = null;
+    let safeFileName: string | null = null; // Menentukan tipe secara eksplisit
 
     if (fileLampiran && fileLampiran instanceof File && fileLampiran.size > 0) {
       const isDirekturTarget = pengirimRole?.toLowerCase() === 'direktur';
-
-      const uploadDir = isDirekturTarget
-        ? path.join(process.cwd(), 'public', 'uploads', 'direktur')
-        : path.join(process.cwd(), 'public', 'uploads', 'admin');
-
-      await fs.mkdir(uploadDir, { recursive: true });
-
       const prefix = isDirekturTarget ? 'instruksi_' : 'lampiran_';
-      const safeFileName = `${prefix}${Date.now()}_${fileLampiran.name.replace(/\s+/g, '_')}`;
-
-      // Gunakan komentar /*turbopackIgnore: true*/ jika peringatan masih muncul pada safeFileName
-      const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, safeFileName);
+      const originalFileName = fileLampiran.name.replace(/\s+/g, '_');
+      const generatedFileName = `${prefix}${Date.now()}_${originalFileName}`;
 
       const bytes = await fileLampiran.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      await fs.writeFile(filePath, buffer);
+
+      // TENTUKAN NAMA FOLDER SECARA DINAMIS DI SINI
+      const targetFolder = isDirekturTarget ? 'uploads/direktur' : 'uploads/admin';
+
+      if (process.env.NODE_ENV === 'production') {
+        // ==========================================
+        // MODE PRODUCTION: UPLOAD KE CLOUDINARY
+        // ==========================================
+        const uploadResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { 
+              folder: targetFolder, // <-- Memasukkan nama folder yang sudah disamakan
+              resource_type: 'auto'
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          uploadStream.end(buffer);
+        });
+
+        safeFileName = (uploadResult as any).secure_url; 
+
+      } else {
+        // ==========================================
+        // MODE DEVELOPMENT: UPLOAD KE FOLDER LOKAL
+        // ==========================================
+        // Karena targetFolder bentuknya 'uploads/direktur', kita bisa memecahnya 
+        // untuk sistem path lokal agar lebih rapi.
+        const uploadDir = path.join(process.cwd(), 'public', ...targetFolder.split('/'));
+
+        await fs.mkdir(uploadDir, { recursive: true });
+        
+        const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, generatedFileName);
+        await fs.writeFile(filePath, buffer);
+        
+        safeFileName = generatedFileName;
+      }
     }
 
     // --- PENANGANAN KHUSUS BALASAN LAPORAN/ADUAN ---
