@@ -38,21 +38,35 @@ export async function POST(request: Request) {
         // ==========================================
         // MODE PRODUCTION: UPLOAD KE CLOUDINARY
         // ==========================================
+        const fileType = fileLampiran.type || ''; 
+        const isImage = fileType.startsWith('image/');
+        const resourceType = isImage ? 'image' : 'raw';
+
+        // 2. Format penamaan: Image tidak butuh ekstensi di public_id, tapi Raw WAJIB ada ekstensi
+        const fileNameWithoutExt = generatedFileName.substring(0, generatedFileName.lastIndexOf('.')) || generatedFileName;
+        const finalPublicId = isImage ? fileNameWithoutExt : generatedFileName;
+
         const uploadResult = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             { 
-              folder: targetFolder, // <-- Memasukkan nama folder yang sudah disamakan
-              resource_type: 'auto'
+              folder: targetFolder, 
+              resource_type: resourceType, // Gunakan 'raw' untuk PDF, 'image' untuk gambar
+              public_id: finalPublicId     // Nama file yang spesifik
             },
             (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
+              if (error) {
+                console.error("Cloudinary Upload Error:", error);
+                reject(error);
+              } else {
+                resolve(result);
+              }
             }
           );
           uploadStream.end(buffer);
         });
 
-        safeFileName = (uploadResult as any).secure_url; 
+        // Menyimpan full URL Cloudinary ke database
+        safeFileName = (uploadResult as any).secure_url;
 
       } else {
         // ==========================================
