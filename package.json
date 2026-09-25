@@ -28,6 +28,7 @@
     "mysql2": "^3.23.2",
     "next": "^16.3.5",
     "next-auth": "^4.24.15",
+    "next-cloudinary": "^6.19.3",
     "nodemailer": "^9.0.5",
     "postcss": "^8.5.28",
     "prisma": "^6.12.0",
