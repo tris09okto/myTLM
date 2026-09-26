@@ -35,7 +35,7 @@ export default function FinanceDashboardClient({
   loggedInJabatan = 'Keuangan'
 }: FinanceDashboardProps) {
   const [userRole, setUserRole] = useState(loggedInJabatan);
-  const [activeTab, setActiveTab] = useState('gaji'); // 'rekening', 'gaji', 'pesan', 'inbox', 'upload-perkiraan-pemasukan'
+  const [activeTab, setActiveTab] = useState('gaji'); 
   const [employees, setEmployees] = useState<any[]>([]);
   const [perkiraanList, setPerkiraanList] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -49,31 +49,26 @@ export default function FinanceDashboardClient({
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // State untuk Filter Upload Excel
   const [filterType, setFilterType] = useState('');
   const [filterValue, setFilterValue] = useState('');
 
-  // State untuk Menu Pesan & Inbox
   const [pesanTipe, setPesanTipe] = useState('Laporan ke Direktur');
   const [pesanKonten, setPesanKonten] = useState('');
   const [pesanLampiran, setPesanLampiran] = useState<File | null>(null);
   const [isSendingPesan, setIsSendingPesan] = useState(false);
 
-  // State Inbox Masuk & Balas Pesan
   const [inboxList, setInboxList] = useState<any[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
   const [balasanText, setBalasanText] = useState('');
   const [balasanLampiran, setBalasanLampiran] = useState<File | null>(null);
   const [isSendingBalasan, setIsSendingBalasan] = useState(false);
 
-  // State untuk Form Balas Pesan & Thread History
   const [tanggapanText, setTanggapanText] = useState('');
   const [fileSanggahan, setFileSanggahan] = useState<File | null>(null);
   const [isSubmittingTanggapan, setIsSubmittingTanggapan] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // Fetch Inbox Pesan Masuk
   const fetchInbox = async () => {
     try {
       const res = await fetch('/api/kirim-pesan/inbox');
@@ -92,33 +87,12 @@ export default function FinanceDashboardClient({
     return () => clearInterval(interval);
   }, []);
 
-  // Hitung pesan yang belum dibaca (unread)
   const unreadCount = inboxList.filter(msg => !msg.is_read).length;
-
-  // Fungsi saat pesan dibuka (tandai sudah dibaca & tampilkan full view)
-  /*const handleOpenMessage = async (msg: any) => {
-    setSelectedMessage(msg);
-    setBalasanText('');
-    setBalasanLampiran(null);
-    if (!msg.is_read) {
-      try {
-        await fetch('/api/kirim-pesan/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: msg.id })
-        });
-        setInboxList(inboxList.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
-      } catch (error) {
-        console.error("Gagal menandai pesan dibaca", error);
-      }
-    }
-  };*/
 
   const handleOpenMessage = async (msg: any) => {
     setSelectedMessage(msg);
     setIsLoadingHistory(true);
 
-    // 1. Jika pesan belum dibaca, kirim request untuk update is_read = 1
     if (!msg.is_read) {
       try {
         await fetch('/api/kirim-pesan/read', {
@@ -132,9 +106,8 @@ export default function FinanceDashboardClient({
       }
     }
 
-    // 2. Ambil history percakapan dua arah antara userRole saat ini (Keuangan) dengan pengirim pesan
     try {
-      const pihakLain = msg.pengirim_role; // Lawan bicara / pengirim asal
+      const pihakLain = msg.pengirim_role; 
       const res = await fetch(`/api/kirim-pesan/history?pihak1=${encodeURIComponent(userRole)}&pihak2=${encodeURIComponent(pihakLain)}`);
       const data = await res.json();
       if (data.success) {
@@ -147,7 +120,6 @@ export default function FinanceDashboardClient({
     }
   };
 
-  // Fungsi Kirim Balasan Pesan
   const handleKirimBalasan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMessage) return;
@@ -156,7 +128,7 @@ export default function FinanceDashboardClient({
     try {
       const formData = new FormData();
       formData.append('pengirimRole', loggedInJabatan);
-      formData.append('nikTujuan', selectedMessage.pengirim_role); // Target balasan kembali ke pengirim asal
+      formData.append('nikTujuan', selectedMessage.pengirim_role); 
       formData.append('tipe', `Balasan: ${selectedMessage.tipe}`);
       formData.append('konten', balasanText);
       
@@ -184,7 +156,6 @@ export default function FinanceDashboardClient({
     }
   };
 
-  // Debounce & Fetch Pegawai
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -233,7 +204,6 @@ export default function FinanceDashboardClient({
     fetchEmployees(debouncedSearch);
   }, [debouncedSearch]);
 
-  // Fetch Data Entri Perkiraan Pemasukan
   const fetchPerkiraanPemasukan = async () => {
     try {
       const res = await fetch('/api/keuangan/get-perkiraan-pemasukan');
@@ -292,46 +262,6 @@ export default function FinanceDashboardClient({
     }
   };
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        const userRes = await fetch('/api/auth/me');
-        const userData = await userRes.json();
-        if (userData.success) {
-          setCurrentUser(userData.data);
-        }
-
-        const pegRes = await fetch('/api/pegawai/get-all-pegawai');
-        const pegData = await pegRes.json();
-        
-        if (pegData.success) {
-          const formattedData = pegData.data.map((emp: any) => ({
-            id: emp.id,
-            employee_kind: emp.employee_kind,
-            nama: emp.nama,
-            nik: emp.nik,
-            jenis_pegawai: emp.jenis_pegawai,
-            nama_bank: emp.nama_bank,
-            norek: emp.norek,
-            area: emp.area,
-            leader: emp.leader,
-            estimasi: Number(emp.estimasi) || 0,
-            estimasiShared: emp.estimasi_shared === 1,
-            slipName: emp.slip_name || null,
-            slipSent: emp.slip_sent === 1
-          }));
-          setEmployees(formattedData);
-        }
-      } catch (error) {
-        console.error("Gagal mengambil data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchAllData();
-  }, []);
-
   const handleEstimasiChange = (id: number, value: string) => {
     setEmployees(employees.map(emp => emp.id === id ? { ...emp, estimasi: Number(value) } : emp));
   };
@@ -340,7 +270,6 @@ export default function FinanceDashboardClient({
     const isConfirmed = window.confirm("Apakah Anda yakin ingin membagikan estimasi gaji ini?");
     if (!isConfirmed) return;
 
-    // Cari data pegawai berdasarkan ID untuk mendapatkan nama dan NIK-nya
     const emp = employees.find(e => e.id === id && e.employee_kind === employeeKind);
     if (!emp) return;
 
@@ -355,22 +284,17 @@ export default function FinanceDashboardClient({
       if (data.success) {
         setEmployees(employees.map(e => e.id === id && e.employee_kind === employeeKind ? { ...e, estimasiShared: true } : e));
         
-        // ==============================================================
-        // TAMBAHAN: KIRIM NOTIFIKASI OTOMATIS KE AKUN PEGAWAI
-        // ==============================================================
         try {
           const notifForm = new FormData();
-          notifForm.append('pengirimRole', loggedInJabatan); // 'Keuangan'
-          notifForm.append('nikTujuan', emp.nik); // Kirim spesifik ke NIK pegawai ini
+          notifForm.append('pengirimRole', loggedInJabatan); 
+          notifForm.append('nikTujuan', emp.nik); 
           notifForm.append('tipe', 'Pengumuman Pribadi - Info Gaji');
           notifForm.append('konten', `Halo ${emp.nama},\n\nInformasi jumlah Perkiraan Pendapatan / Fee Anda untuk periode ini telah diperbarui oleh Tim Keuangan.\n\nSilakan cek detail estimasi pendapatan Anda pada halaman Dashboard Utama Anda. Terima kasih.`);
           
-          // Tembak ke endpoint kirim pesan
           await fetch('/api/kirim-pesan', { method: 'POST', body: notifForm });
         } catch (notifErr) {
           console.error("Gagal mengirim notifikasi:", notifErr);
         }
-        // ==============================================================
 
         alert("Berhasil dibagikan! Notifikasi telah masuk ke akun pegawai.");
       } else {
@@ -384,12 +308,10 @@ export default function FinanceDashboardClient({
   const handleUploadSlip = (id: number, employeeKind: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Perhatikan kita mencocokkan e.nik === nik, bukan lagi id
       setEmployees(employees.map(emp => emp.id === id && emp.employee_kind === employeeKind ? { ...emp, slipName: file.name, rawFile: file } : emp));
     }
   };
 
-  // UBAH FUNGSI INI
   const handleSendSlip = async (id: number, employeeKind: string) => {
     const emp = employees.find(e => e.id === id && e.employee_kind === employeeKind);
     if (!emp || !emp.rawFile) {
@@ -400,21 +322,17 @@ export default function FinanceDashboardClient({
     setSendingId(emp.id);
     const formData = new FormData();
     formData.append('file', emp.rawFile);
-    formData.append('id_pegawai', String(emp.id)); // Tetap kirim id untuk backend
+    formData.append('id_pegawai', String(emp.id)); 
     formData.append('employee_kind', emp.employee_kind);
-    formData.append('nik_pegawai', emp.nik);       // Opsional: Kirim NIK juga untuk jaga-jaga
+    formData.append('nik_pegawai', emp.nik);       
 
     try {
       const res = await fetch('/api/keuangan/upload-slip-gaji', { method: 'POST', body: formData });
       const data = await res.json();
       
       if (data.success) {
-        // Perhatikan kita mencocokkan e.nik === nik
         setEmployees(employees.map(e => e.id === id && e.employee_kind === employeeKind ? { ...e, slipSent: true, slipName: data.fileName } : e));
         
-        // ==============================================================
-        // TAMBAHAN: KIRIM NOTIFIKASI OTOMATIS KE AKUN PEGAWAI
-        // ... (Kode notifikasi Anda biarkan utuh seperti sebelumnya) ...
         try {
           const notifForm = new FormData();
           notifForm.append('pengirimRole', loggedInJabatan);
@@ -426,7 +344,6 @@ export default function FinanceDashboardClient({
         } catch (notifErr) {
           console.error("Gagal mengirim notifikasi:", notifErr);
         }
-        // ==============================================================
 
         alert("Slip gaji berhasil dikirim! Notifikasi telah masuk ke akun pegawai.");
       } else {
@@ -454,7 +371,6 @@ export default function FinanceDashboardClient({
       return;
     }
 
-    // Konfirmasi agar user yakin data yang diproses hanya sesuai filter
     let labelFilter = filterType === 'pegawai' ? 'Pegawai (NIK)' : filterType === 'area' ? 'Area' : 'Leader';
     const isConfirmed = window.confirm(`PENTING: Sistem hanya akan menyimpan data pemasukan untuk ${labelFilter} [${filterValue}] dari file Excel ini. Lanjutkan?`);
     
@@ -472,14 +388,12 @@ export default function FinanceDashboardClient({
       if (data.success) {
         alert("Berhasil: " + data.message);
         
-        // Reset form
         setExcelFile(null);
         setFilterType('');
         setFilterValue('');
 
-        // Refresh data pegawai & data perkiraan pemasukan
         fetchEmployees(searchQuery); 
-        fetchPerkiraanPemasukan(); // <-- TAMBAHKAN BARIS INI UNTUK REFRESH DATA TABEL GAJI
+        fetchPerkiraanPemasukan(); 
         
         setActiveTab('gaji'); 
       } else {
@@ -540,7 +454,6 @@ export default function FinanceDashboardClient({
             className={`flex items-center w-full p-3 rounded-lg transition-colors ${activeTab === 'gaji' ? 'bg-blue-50 text-blue-600 font-medium' : 'hover:bg-gray-100'}`}
           >
             <FileText className="w-5 h-5 mr-3" /> Distribusi Laporan 
-
           </button>
 
           <button 
@@ -730,7 +643,19 @@ export default function FinanceDashboardClient({
                       </td>
                       <td className="p-3">
                         {emp.slipName ? (
-                          <span className="text-blue-600 text-sm">{emp.slipName}</span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="text-gray-600 text-xs truncate max-w-[150px]" title={emp.slipName}>
+                              {emp.slipName.split('/').pop()}
+                            </span>
+                            <a 
+                              href={emp.slipName.startsWith('http') ? emp.slipName : `/uploads/slips/${emp.slipName}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                            >
+                              Lihat / Unduh PDF
+                            </a>
+                          </div>
                         ) : (
                           <input type="file" accept=".pdf" onChange={e => handleUploadSlip(emp.id, emp.employee_kind, e)} className="text-xs" />
                         )}
@@ -753,127 +678,6 @@ export default function FinanceDashboardClient({
         )}
 
         {/* TAB: KOTAK MASUK / INBOX (DENGAN FITUR BALAS PESAN) */}
-        {/*activeTab === 'inbox' && (
-          <div className="space-y-6 max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Inbox className="w-7 h-7 text-blue-600" /> Kotak Masuk Pesan & Laporan
-            </h2>
-
-            {selectedMessage ? (
-              // Tampilan Detail & Form Balas Pesan
-              <div className="bg-white rounded-xl shadow-sm border p-8 space-y-6 animate-fade-in">
-                <div className="flex justify-between items-center border-b pb-4">
-                  <div>
-                    <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded uppercase">
-                      {selectedMessage.tipe}
-                    </span>
-                    <h3 className="text-xl font-bold text-gray-800 mt-2">Dari Pengirim: {selectedMessage.pengirim_role || 'Sistem'}</h3>
-                    <p className="text-xs text-gray-400 mt-1">Waktu: {new Date(selectedMessage.created_at).toLocaleString('id-ID')}</p>
-                  </div>
-                  <button onClick={() => setSelectedMessage(null)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-100 font-semibold">
-                    ← Kembali ke Daftar Pesan
-                  </button>
-                </div>
-
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-100">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Isi Pesan / Instruksi:</h4>
-                  <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedMessage.konten}</p>
-                </div>
-
-                {selectedMessage.file_lampiran && (
-                  <div className="flex items-center justify-between p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
-                    <div className="flex items-center gap-2 text-indigo-700 font-medium text-sm">
-                      <Paperclip className="w-5 h-5" /> Lampiran Dokumen Tersedia
-                    </div>
-                    <a href={`/uploads/direktur/${selectedMessage.file_lampiran}`} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700">
-                      Unduh / Lihat File
-                    </a>
-                  </div>
-                )}
-
-                <div className="border-t pt-6 mt-6">
-                  <h4 className="text-md font-bold text-gray-800 mb-4">Balas Pesan / Kirim Tanggapan</h4>
-                  <form onSubmit={handleKirimBalasan} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Isi Balasan</label>
-                      <textarea
-                        rows={4}
-                        required
-                        value={balasanText}
-                        onChange={(e) => setBalasanText(e.target.value)}
-                        placeholder="Tulis balasan atau tanggapan Anda di sini..."
-                        className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      ></textarea>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Upload File Lampiran Balasan (Opsional)</label>
-                      <input
-                        type="file"
-                        accept=".pdf, image/*"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            setBalasanLampiran(e.target.files[0]);
-                          }
-                        }}
-                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                    </div>
-
-                    <div className="flex justify-end gap-3">
-                      <button 
-                        type="button" 
-                        onClick={() => setSelectedMessage(null)} 
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold"
-                      >
-                        Batal
-                      </button>
-                      <button 
-                        type="submit" 
-                        disabled={isSendingBalasan} 
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition disabled:opacity-50"
-                      >
-                        {isSendingBalasan ? 'Mengirim Balasan...' : 'Kirim Balasan Pesan'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            ) : (
-              // Daftar List Pesan Masuk
-              <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                {inboxList.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400">Tidak ada pesan atau laporan masuk.</div>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {inboxList.map(msg => (
-                      <div 
-                        key={msg.id} 
-                        onClick={() => handleOpenMessage(msg)}
-                        className={`p-5 flex items-center justify-between cursor-pointer transition hover:bg-gray-50 ${!msg.is_read ? 'bg-blue-50/40 font-semibold' : ''}`}
-                      >
-                        <div className="flex items-center gap-4">
-                          {msg.is_read ? <MailOpen className="w-5 h-5 text-gray-400" /> : <Mail className="w-5 h-5 text-blue-600 animate-bounce" />}
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-blue-600 uppercase">[{msg.tipe}]</span>
-                              <span className="text-xs text-gray-500">Dari: {msg.pengirim_role}</span>
-                            </div>
-                            <p className="text-sm text-gray-800 mt-1 line-clamp-1">{msg.konten}</p>
-                          </div>
-                        </div>
-                        <div className="text-right text-xs text-gray-400 shrink-0">
-                          {new Date(msg.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )*/}
-
         {activeTab === 'inbox' && (
           <div className="animate-fade-in max-w-5xl mx-auto space-y-6">
             <div className="flex justify-between items-center border-b pb-4">
@@ -921,12 +725,12 @@ export default function FinanceDashboardClient({
                             {item.file_lampiran && (
                               <div className="mt-3 pt-2 border-t border-white/20">
                                 <a 
-                                  href={`/uploads/${item.file_lampiran}`} 
+                                  href={item.file_lampiran.startsWith('http') ? item.file_lampiran : `/uploads/${item.file_lampiran}`} 
                                   target="_blank" 
                                   rel="noopener noreferrer" 
                                   className={`text-xs font-semibold underline inline-flex items-center gap-1.5 ${isOurMessage ? 'text-white' : 'text-blue-600'}`}
                                 >
-                                  📎 Lihat Lampiran ({item.file_lampiran})
+                                  📎 Lihat Lampiran
                                 </a>
                               </div>
                             )}
@@ -970,7 +774,6 @@ export default function FinanceDashboardClient({
                       setTanggapanText('');
                       setFileSanggahan(null);
                       
-                      // Refresh ulang history
                       const refreshRes = await fetch(`/api/kirim-pesan/history?pihak1=${encodeURIComponent(userRole)}&pihak2=${encodeURIComponent(selectedMessage.pengirim_role)}`);
                       const refreshData = await refreshRes.json();
                       if (refreshData.success) {

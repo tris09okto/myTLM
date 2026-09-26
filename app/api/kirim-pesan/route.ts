@@ -23,43 +23,68 @@ export async function POST(request: Request) {
     let safeFileName: string | null = null; // Menentukan tipe secara eksplisit
 
     if (fileLampiran && fileLampiran instanceof File && fileLampiran.size > 0) {
+      
+      // --- PENYESUAIAN PREFIX & FOLDER DINAMIS ---
       const isDirekturTarget = pengirimRole?.toLowerCase() === 'direktur';
-      const prefix = isDirekturTarget ? 'instruksi_' : 'lampiran_';
+      
+      // Deteksi jika yang mengirim adalah pegawai (bukan admin/MO/HRD) dan tujuannya adalah MO/HRD
+      const isBalasanPegawai = ['MO', 'HRD'].includes(nikTujuan?.toUpperCase()) && 
+                               !['MO', 'HRD', 'DIREKTUR', 'ADMIN'].includes(pengirimRole?.toUpperCase());
+
+      let prefix = 'lampiran_';
+      let targetFolder = 'uploads/admin';
+
+      if (isDirekturTarget) {
+        prefix = 'instruksi_';
+        targetFolder = 'uploads/direktur';
+      } else if (isBalasanPegawai) {
+        prefix = 'balasan_pegawai_';
+        targetFolder = 'uploads/balasan_pegawai'; // File balasan pegawai dipisah agar rapi
+      }
+
       const originalFileName = fileLampiran.name.replace(/\s+/g, '_');
       const generatedFileName = `${prefix}${Date.now()}_${originalFileName}`;
 
       const bytes = await fileLampiran.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // TENTUKAN NAMA FOLDER SECARA DINAMIS DI SINI
-      const targetFolder = isDirekturTarget ? 'uploads/direktur' : 'uploads/admin';
-
       if (process.env.NODE_ENV === 'production') {
         // ==========================================
         // MODE PRODUCTION: UPLOAD KE CLOUDINARY
         // ==========================================
+        const fileType = fileLampiran.type || ''; 
+        const isImage = fileType.startsWith('image/');
+        const resourceType = isImage ? 'image' : 'raw';
+
+        const fileNameWithoutExt = generatedFileName.substring(0, generatedFileName.lastIndexOf('.')) || generatedFileName;
+        const finalPublicId = isImage ? fileNameWithoutExt : generatedFileName;
+
         const uploadResult = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             { 
-              folder: targetFolder, // <-- Memasukkan nama folder yang sudah disamakan
-              resource_type: 'auto'
+              folder: targetFolder, 
+              resource_type: resourceType, 
+              public_id: finalPublicId     
             },
             (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
+              if (error) {
+                console.error("Cloudinary Upload Error:", error);
+                reject(error);
+              } else {
+                resolve(result);
+              }
             }
           );
           uploadStream.end(buffer);
         });
 
-        safeFileName = (uploadResult as any).secure_url; 
+        // Menyimpan full URL Cloudinary ke database
+        safeFileName = (uploadResult as any).secure_url;
 
       } else {
         // ==========================================
         // MODE DEVELOPMENT: UPLOAD KE FOLDER LOKAL
         // ==========================================
-        // Karena targetFolder bentuknya 'uploads/direktur', kita bisa memecahnya 
-        // untuk sistem path lokal agar lebih rapi.
         const uploadDir = path.join(process.cwd(), 'public', ...targetFolder.split('/'));
 
         await fs.mkdir(uploadDir, { recursive: true });
@@ -116,7 +141,8 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      // Menyimpan pesan dengan penerima_nik yang sudah dipastikan berupa NIK pegawai yang benar
+      // Menyimpan pesan. Jika ini balasan dari pegawai, targetNik akan bernilai "MO" atau "HRD" 
+      // yang akan tersimpan dengan benar di kolom penerima_nik.
       await pool.query(
         `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read) 
          VALUES (?, ?, ?, ?, ?, 0)`,
@@ -124,7 +150,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, message: 'Pesan/Balasan berhasil dikirim ke pegawai.' });
+    return NextResponse.json({ success: true, message: 'Pesan/Balasan berhasil dikirim.' });
 
   } catch (error) {
     console.error("Gagal kirim pesan:", error);

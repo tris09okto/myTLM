@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 import * as XLSX from "xlsx";
@@ -137,6 +137,12 @@ export default function AdminDashboardClient({
   const [pesanKonten, setPesanKonten] = useState('');
   const [pesanLampiran, setPesanLampiran] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
+
+  // TAMBAHKAN INI: Ref untuk mengontrol elemen file input kirim pesan
+  const fileKirimPesanRef = useRef<HTMLInputElement>(null);
+
+  // TAMBAHKAN INI JUGA: Ref untuk form balas pesan di Kotak Masuk
+  const fileBalasPesanRef = useRef<HTMLInputElement>(null);
 
   // --- STATE KOTAK MASUK (UNTUK DIREKTUR, HRD, MO, DLL) ---
   const [listPesanMasuk, setListPesanMasuk] = useState<PesanMasuk[]>([]);
@@ -1096,6 +1102,11 @@ export default function AdminDashboardClient({
                       }
                       
                       fetchKotakMasuk();
+
+                      // TAMBAHKAN KODE INI UNTUK MENGOSONGKAN INPUT FILE:
+                      if (fileKirimPesanRef.current) {
+                        fileKirimPesanRef.current.value = '';
+                      }
                     } catch (error) {
                       console.error(error);
                       alert('Terjadi kesalahan saat mengirim balasan.');
@@ -1119,10 +1130,13 @@ export default function AdminDashboardClient({
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Upload File Lampiran Balasan (Opsional)</label>
                       <input
                         type="file"
+                        ref={fileKirimPesanRef}
                         accept=".pdf, .xlsx, .xls, image/*"
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
                             setFileSanggahan(e.target.files[0]);
+                          } else {
+                            setFileSanggahan(null);
                           }
                         }}
                         className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
@@ -1239,6 +1253,11 @@ export default function AdminDashboardClient({
                     setPesanTipe('Pesan Umum');
                     setPesanLampiran(null);
 
+                    // TAMBAHKAN KODE INI UNTUK MENGOSONGKAN INPUT FILE:
+                    if (fileKirimPesanRef.current) {
+                      fileKirimPesanRef.current.value = '';
+                    }
+
                   } catch (error) {
                     console.error(error);
                     alert('Terjadi kesalahan saat mengirim pesan.');
@@ -1334,6 +1353,7 @@ export default function AdminDashboardClient({
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Upload Lampiran / Dokumen Balasan (Opsional)</label>
                   <input
                     type="file"
+                    ref={fileKirimPesanRef}
                     accept=".pdf, image/jpeg, image/png, image/jpg"
                     onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {

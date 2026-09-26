@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import {pool} from '@/lib/db'; // Sesuaikan path import database Anda
+import { pool } from '@/lib/db'; // Sesuaikan path import database Anda
+import { v2 as cloudinary } from 'cloudinary';
+
+// Konfigurasi Cloudinary (Otomatis mengambil dari environment variables)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(req: Request) {
   try {
@@ -29,13 +37,55 @@ export async function POST(req: Request) {
 
       const originalName = foto.name.replace(/\s+/g, '_');
       const ext = originalName.split('.').pop();
-      fileName = `laporan-${nik}-${Date.now()}.${ext}`;
-
-      const uploadDir = path.join(process.cwd(), 'public/uploads/qna');
-      await mkdir(uploadDir, { recursive: true });
+      const generatedName = `laporan-${nik}-${Date.now()}`;
       
-      const filePath = path.join(uploadDir, fileName);
-      await writeFile(filePath, buffer);
+      const targetFolder = 'uploads/qna'; // Nama folder yang akan digunakan
+
+      if (process.env.NODE_ENV === 'production') {
+        // ==========================================
+        // MODE PRODUCTION: UPLOAD KE CLOUDINARY
+        // ==========================================
+        const fileType = foto.type || '';
+        const isImage = fileType.startsWith('image/');
+        const resourceType = isImage ? 'image' : 'raw';
+        
+        // Untuk Cloudinary, tipe 'raw' wajib menyertakan ekstensi file pada public_id
+        const finalPublicId = isImage ? generatedName : `${generatedName}.${ext}`;
+
+        const uploadResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { 
+              folder: targetFolder, 
+              resource_type: resourceType, 
+              public_id: finalPublicId 
+            },
+            (error, result) => {
+              if (error) {
+                console.error("Cloudinary Upload Error:", error);
+                reject(error);
+              } else {
+                resolve(result);
+              }
+            }
+          );
+          uploadStream.end(buffer);
+        });
+
+        // Menyimpan full URL dari Cloudinary ke database
+        fileName = (uploadResult as any).secure_url;
+
+      } else {
+        // ==========================================
+        // MODE DEVELOPMENT: UPLOAD KE FOLDER LOKAL
+        // ==========================================
+        fileName = `${generatedName}.${ext}`;
+        
+        const uploadDir = path.join(process.cwd(), 'public', ...targetFolder.split('/'));
+        await mkdir(uploadDir, { recursive: true });
+        
+        const filePath = path.join(uploadDir, fileName);
+        await writeFile(filePath, buffer);
+      }
     }
 
     // 1. FORMAT JUDUL & KATEGORI
