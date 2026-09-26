@@ -29,10 +29,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Invalid reply" }, { status: 400 });
   }
   try {
-    const recipients = [principal.username, principal.role, principal.jabatan, principal.jabatan.toUpperCase()];
+    const recipients = [
+      principal.username,
+      principal.role,
+      principal.jabatan,
+      principal.jabatan.toUpperCase(),
+      "ALL",
+      "SEMUA",
+    ];
     const [originals] = await pool.query<OriginalRow[]>(
       `SELECT pengirim_role, penerima_nik, tipe_pesan FROM pesan_notifikasi
-       WHERE id = ? AND penerima_nik IN (?, ?, ?, ?) LIMIT 1`,
+       WHERE id = ? AND penerima_nik IN (?, ?, ?, ?, ?, ?) LIMIT 1`,
       [id, ...recipients],
     );
     const original = originals[0];

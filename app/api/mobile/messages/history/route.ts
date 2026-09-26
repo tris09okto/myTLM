@@ -18,13 +18,14 @@ export async function GET(request: Request) {
   }
   try {
     const identities = [principal.username, principal.role, principal.jabatan, principal.jabatan.toUpperCase()];
+    const inboxRecipients = [...identities, "ALL", "SEMUA"];
     const [messages] = await pool.query<RowDataPacket[]>(
       `SELECT id, pengirim_role, penerima_nik, tipe_pesan, konten,
               file_lampiran, is_read, created_at FROM pesan_notifikasi
        WHERE (pengirim_role IN (?, ?, ?, ?) AND penerima_nik = ?)
-          OR (penerima_nik IN (?, ?, ?, ?) AND pengirim_role = ?)
+          OR (penerima_nik IN (?, ?, ?, ?, ?, ?) AND pengirim_role = ?)
        ORDER BY created_at ASC`,
-      [...identities, peer, ...identities, peer],
+      [...identities, peer, ...inboxRecipients, peer],
     );
     return NextResponse.json({ messages: await Promise.all(messages.map(async (message) => ({
       ...message,

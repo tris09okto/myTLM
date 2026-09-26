@@ -12,6 +12,31 @@ export const runtime = "nodejs";
 
 const allowedFlags = new Set(["ALL", "ALL_FRONTING", "ALL_NON_FRONTING", "HRD", "MO", "DIREKTUR", "KEUANGAN"]);
 
+function adminRecipientForCategory(jabatan: string, type: string): string | null | undefined {
+  const normalized = jabatan.toLowerCase();
+  const categories = new Map<string, string | null>();
+
+  if (normalized === "direktur") {
+    categories.set("Instruksi Umum", "ALL");
+    categories.set("Instruksi ke MO", "MO");
+    categories.set("Instruksi ke HRD", "HRD");
+    categories.set("Instruksi ke Keuangan", "KEUANGAN");
+    return categories.get(type);
+  }
+
+  categories.set("Pesan Umum", "ALL");
+  if (normalized === "hrd") {
+    categories.set("Broadcast Fronting", "ALL_FRONTING");
+    categories.set("Broadcast Non Fronting", "ALL_NON_FRONTING");
+    categories.set("Surat Peringatan", null);
+  }
+  if (normalized === "mo") categories.set("Surat Perintah Tugas", null);
+  if (["mo", "hrd", "keuangan"].includes(normalized)) {
+    categories.set("Laporan ke Direktur", "DIREKTUR");
+  }
+  return categories.get(type);
+}
+
 function inboxRecipients(principal: { username: string; role: string; jabatan: string }) {
   return [principal.username, principal.role, principal.jabatan, principal.jabatan.toUpperCase(), "ALL", "SEMUA"];
 }
@@ -59,6 +84,18 @@ export async function POST(request: Request) {
   const destination = allowedFlags.has(rawDestination.toUpperCase())
     ? rawDestination.toUpperCase()
     : rawDestination;
+  if (principal.role === "admin") {
+    const expectedRecipient = adminRecipientForCategory(principal.jabatan, type.trim());
+    if (expectedRecipient === undefined) {
+      return NextResponse.json({ message: "Kategori pesan tidak diizinkan" }, { status: 403 });
+    }
+    if (
+      (expectedRecipient !== null && destination.toUpperCase() !== expectedRecipient) ||
+      (expectedRecipient === null && allowedFlags.has(destination.toUpperCase()))
+    ) {
+      return NextResponse.json({ message: "Tujuan tidak sesuai dengan kategori pesan" }, { status: 400 });
+    }
+  }
   try {
     if (!allowedFlags.has(destination.toUpperCase())) {
       const [matches] = await pool.query<RowDataPacket[]>(
