@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import path from "path";
 import bcrypt from 'bcryptjs';
 import { pool } from "@/lib/db";
 import nodemailer from "nodemailer";
+import { cleanupStoredUploads, storeFileUpload } from "@/lib/uploads";
 
 // Konfigurasi Nodemailer menggunakan variabel dari .env Anda
 const transporter = nodemailer.createTransport({
@@ -19,6 +18,9 @@ const transporter = nodemailer.createTransport({
 export async function POST(req) {
 
   let connection = null;
+  let transactionStarted = false;
+  let committed = false;
+  const uploads = [];
 
   try {
     const formData = await req.formData();
@@ -42,36 +44,36 @@ export async function POST(req) {
     const stFiles = formData.getAll("st_file");
     const savedStFileNames = [];
 
-    for (const file of stFiles) {
-      if (file && typeof file === "object" && file.name && file.name.trim() !== "") {
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-
-        const fileName = `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
-        const filePath = path.join(process.cwd(), "public/uploads", fileName);
-
-        await writeFile(filePath, buffer);
-        savedStFileNames.push(fileName);
-      }
+    const validStFiles = stFiles.filter((value) => value instanceof File && value.name.trim() && value.size > 0).slice(0, 3);
+    for (const file of validStFiles) {
+      const stored = await storeFileUpload({
+        file,
+        folder: "",
+        localFileName: `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`,
+      });
+      uploads.push(stored);
+      savedStFileNames.push(stored.reference);
     }
 
-    // Batasi maksimal hanya 3 file yang diambil
-    const finalStFiles = savedStFileNames.slice(0, 3);
-    const stFileString = finalStFiles.join(",");
+    const stFileString = savedStFileNames.join(",");
 
     // Tangkap file ID Card
     const idCardFile = formData.get("idcard_file");
     let idCardName = "";
-    if (idCardFile && typeof idCardFile === "object" && idCardFile.name) {
-      const bytes = await idCardFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      idCardName = `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`;
-      await writeFile(path.join(process.cwd(), "public/uploads", idCardName), buffer);
+    if (idCardFile instanceof File && idCardFile.name && idCardFile.size > 0) {
+      const stored = await storeFileUpload({
+        file: idCardFile,
+        folder: "",
+        localFileName: `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`,
+      });
+      uploads.push(stored);
+      idCardName = stored.reference;
     }
 
     // Mulai Transaksi Database
     connection = await pool.getConnection();
     await connection.beginTransaction();
+    transactionStarted = true;
 
     // 2. Insert ke tabel `users` (Default jabatan: 'fronting', role: 'pegawai')
     await connection.query(
@@ -89,6 +91,7 @@ export async function POST(req) {
 
     // Commit transaksi database jika semua query berhasil
     await connection.commit();
+    committed = true;
 
     await transporter.sendMail({
       from: `"Admin Sistem" <${process.env.EMAIL_FROM}>`, // noreply@perusahaan.com
@@ -109,6 +112,16 @@ export async function POST(req) {
     return NextResponse.json({ success: true, message: "Akun, data pegawai, dan file Surat Tugas berhasil disimpan!" });
     
   } catch (error) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Gagal membatalkan transaksi akun:", rollbackError);
+      }
+    }
+    if (!committed && rolledBack) await cleanupStoredUploads(uploads);
     console.error("Gagal membuat akun:", error);
     return NextResponse.json({ success: false, message: "Terjadi kesalahan server: " + error.message }, { status: 500 });
   } finally {

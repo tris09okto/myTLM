@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -25,38 +24,64 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Survey tidak valid" }, { status: 400 });
   }
 
+  let upload: StoredUpload | undefined;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
   try {
     const [supervisors] = await pool.query<SupervisorRow[]>(
       "SELECT nama FROM data_non_fronting WHERE username = ? AND jabatan = 'supervisor' LIMIT 1",
       [principal.username],
     );
     const name = supervisors[0]?.nama ?? principal.username;
+    const [recipients] = await pool.query<RecipientRow[]>(
+      "SELECT jabatan FROM users WHERE LOWER(jabatan) LIKE '%mo%' OR LOWER(jabatan) LIKE '%hrd%'",
+    );
     let fileName: string | null = null;
     if (photo instanceof File && photo.size > 0) {
       const extension = photo.type === "image/png" ? ".png" : photo.type === "image/webp" ? ".webp" : ".jpg";
-      fileName = `${randomUUID()}${extension}`;
-      const folder = path.join(process.cwd(), "public", "uploads", "spv-survey-kunjungan");
-      await mkdir(folder, { recursive: true });
-      await writeFile(path.join(folder, fileName), Buffer.from(await photo.arrayBuffer()));
+      upload = await storeFileUpload({
+        file: photo,
+        folder: "spv-survey-kunjungan",
+        localFileName: `${randomUUID()}${extension}`,
+        resourceType: "image",
+      });
+      fileName = upload.reference;
     }
-    await pool.query(
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    await connection.query(
       `INSERT INTO survey_kunjungan (spv_username, spv_nama, keterangan, foto, created_at)
        VALUES (?, ?, ?, ?, NOW())`,
       [principal.username, name, description.trim(), fileName],
     );
-    const [recipients] = await pool.query<RecipientRow[]>(
-      "SELECT jabatan FROM users WHERE LOWER(jabatan) LIKE '%mo%' OR LOWER(jabatan) LIKE '%hrd%'",
-    );
     for (const recipient of recipients) {
-      await pool.query(
+      await connection.query(
         `INSERT INTO pesan_notifikasi
          (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at)
          VALUES (?, ?, 'Survey Kunjungan Lapangan', ?, ?, 0, NOW())`,
         [principal.username, recipient.jabatan, `[Survey Kunjungan] Dari SPV: ${name} (${principal.username}). Keterangan: "${description.trim()}"`, fileName],
       );
     }
+    await connection.commit();
+    committed = true;
     return NextResponse.json({ success: true, message: "Survey kunjungan berhasil dikirim." });
-  } catch {
+  } catch (error) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Unable to roll back survey transaction", rollbackError);
+      }
+    }
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
+    console.error("Unable to submit mobile survey", error);
     return NextResponse.json({ message: "Survey gagal dikirim" }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }

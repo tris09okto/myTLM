@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import type { RowDataPacket } from 'mysql2';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function GET(request: Request) {
   try {
@@ -20,9 +21,15 @@ export async function GET(request: Request) {
 
     query += ' ORDER BY created_at DESC';
 
-    const [rows] = await pool.execute(query, queryParams);
+    const [rows] = await pool.execute<RowDataPacket[]>(query, queryParams);
 
-    return NextResponse.json({ success: true, data: rows }, { status: 200 });
+    return NextResponse.json({
+      success: true,
+      data: await Promise.all(rows.map(async (announcement) => ({
+        ...announcement,
+        file_lampiran_url: await resolveUploadUrl(announcement.file_lampiran, "super-admin/pengumuman"),
+      }))),
+    }, { status: 200 });
   } catch (error: any) {
     console.error("Error fetching pengumuman:", error);
     return NextResponse.json({ success: false, message: error.message || "Gagal mengambil data." }, { status: 500 });
@@ -30,6 +37,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(req: Request) {
+  let upload;
+  let connection;
+  let transactionStarted = false;
+  let committed = false;
   try {
     const formData = await req.formData();
     const judul = formData.get('judul') as string;
@@ -42,24 +53,25 @@ export async function POST(req: Request) {
     const file = formData.get('file_lampiran') as File | null;
 
     let filename = null;
-    if (file && typeof file === 'object' && file.name) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      
-      filename = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-      const uploadDir = path.join(process.cwd(), 'public/uploads/super-admin/pengumuman');
-      const uploadPath = path.join(uploadDir, filename);
-      
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(uploadPath, buffer);
+    if (file instanceof File && file.name && file.size > 0) {
+      upload = await storeFileUpload({
+        file,
+        folder: 'super-admin/pengumuman',
+        localFileName: `${Date.now()}-${file.name.replace(/\s+/g, '_')}`,
+      });
+      filename = upload.reference;
     }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
 
     // 1. Simpan pengumuman ke tabel utama
     const queryPengumuman = `
       INSERT INTO pengumuman (judul, isi, file_lampiran, status, jenis_pengumuman, target_penerima) 
       VALUES (?, ?, ?, ?, ?, ?)
     `;
-    await pool.execute(queryPengumuman, [
+    await connection.execute(queryPengumuman, [
       judul, 
       isi, 
       filename, 
@@ -88,7 +100,7 @@ export async function POST(req: Request) {
           tipe_pesan = 'Pengumuman Pribadi';
       }
 
-      await pool.execute(queryNotifikasi, [
+      await connection.execute(queryNotifikasi, [
         'super admin',      // pengirim_role
         targetPenerima,     // penerima_nik (menyimpan target broadcast seperti ALL_FRONTING)
         tipe_pesan,         // tipe_pesan
@@ -97,6 +109,8 @@ export async function POST(req: Request) {
         0                   // is_read (0 = belum dibaca)
       ]);
     }
+    await connection.commit();
+    committed = true;
 
     return NextResponse.json({ 
       success: true, 
@@ -104,10 +118,22 @@ export async function POST(req: Request) {
     }, { status: 200 });
 
   } catch (error: any) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error('Gagal membatalkan transaksi pengumuman:', rollbackError);
+      }
+    }
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
     console.error("Error creating pengumuman & notification:", error);
     return NextResponse.json({ 
       success: false, 
       message: error.message || "Gagal menyimpan pengumuman." 
     }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }

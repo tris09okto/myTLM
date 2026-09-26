@@ -2,8 +2,20 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from "@/lib/auth"; // Sesuaikan path import
 import { pool } from "@/lib/db";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const dynamic = "force-dynamic";
+
+async function profileWithFileUrls(profile) {
+  return {
+    ...profile,
+    idcard_file_url: await resolveUploadUrl(profile.idcard_file, ""),
+    st_file_urls: await Promise.all((profile.st_file || "").split(",").map((entry) =>
+      resolveUploadUrl(entry.trim(), ""))),
+    pas_foto_url: await resolveUploadUrl(profile.pas_foto, "pas_foto"),
+    surat_tugas_url: await resolveUploadUrl(profile.surat_tugas, "surat_tugas"),
+  };
+}
 
 export async function GET(request) {
   try {
@@ -34,7 +46,7 @@ export async function GET(request) {
     console.log("Primary DB Result:", rows);
 
     if (rows.length > 0) {
-      return NextResponse.json({ success: true, data: rows[0] });
+      return NextResponse.json({ success: true, data: await profileWithFileUrls(rows[0]) });
     }
 
     // 2. Jika kosong, lakukan Fallback (Cari di tabel cadangan)
@@ -44,7 +56,7 @@ export async function GET(request) {
     console.log("Fallback DB Result:", fallbackRows);
 
     if (fallbackRows.length > 0) {
-      return NextResponse.json({ success: true, data: fallbackRows[0] });
+      return NextResponse.json({ success: true, data: await profileWithFileUrls(fallbackRows[0]) });
     }
 
     // 3. Jika di kedua tabel tetap kosong

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'fs/promises';
-import path from 'path';
 
 // PENTING: Sesuaikan path ini dengan lokasi file konfigurasi database Anda
 // Biasanya terletak di 'lib/db.js', 'utils/db.js', atau 'config/db.js'
 import {pool} from '@/lib/db'; 
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function POST(request) {
+  let upload;
+  let committed = false;
   try {
     const formData = await request.formData();
     
@@ -17,7 +18,7 @@ export async function POST(request) {
     const file = formData.get('qna_file'); 
 
     // Validasi data
-    if (!file || !judul || !kategori) {
+    if (!(file instanceof File) || !judul || !kategori) {
       return NextResponse.json(
         { success: false, message: 'Data QnA tidak lengkap!' }, 
         { status: 400 }
@@ -25,17 +26,9 @@ export async function POST(request) {
     }
 
     // 1. PROSES SIMPAN FILE KE FOLDER SERVER
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    
     // Buat nama file unik agar tidak tertimpa file lain
     const uniqueFileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-    
-    const uploadDir = path.join(process.cwd(), 'public/uploads/qna');
-    const filePath = path.join(uploadDir, uniqueFileName);
-
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(filePath, buffer);
+    upload = await storeFileUpload({ file, folder: 'qna', localFileName: uniqueFileName });
 
     // 2. PROSES SIMPAN DATA KE DATABASE
     // Menggunakan query berparameter (?) untuk mencegah SQL Injection
@@ -45,10 +38,11 @@ export async function POST(request) {
     `;
     
     // Jika deskripsi kosong, kita simpan string kosong ("")
-    const values = [judul, kategori, deskripsi || "", uniqueFileName];
+    const values = [judul, kategori, deskripsi || "", upload.reference];
 
     // Eksekusi query (disesuaikan dengan module mysql2/promise)
     await pool.query(query, values);
+    committed = true;
 
     // Kembalikan respon sukses ke frontend
     return NextResponse.json({ 
@@ -57,6 +51,7 @@ export async function POST(request) {
     });
 
   } catch (error) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error("Error Upload QnA:", error);
     
     if (error.code === 'ENOENT') {

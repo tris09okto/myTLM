@@ -1,17 +1,10 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { pool } from '@/lib/db'; // Sesuaikan path import database Anda
-import { v2 as cloudinary } from 'cloudinary';
-
-// Konfigurasi Cloudinary (Otomatis mengambil dari environment variables)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function POST(req: Request) {
+  let upload;
+  let committed = false;
   try {
     const formData = await req.formData();
     
@@ -31,61 +24,14 @@ export async function POST(req: Request) {
 
     let fileName = ''; // Gunakan string kosong jika tidak ada file (sesuai varchar database)
 
-    if (foto && foto.size > 0) {
-      const bytes = await foto.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      const originalName = foto.name.replace(/\s+/g, '_');
-      const ext = originalName.split('.').pop();
-      const generatedName = `laporan-${nik}-${Date.now()}`;
-      
-      const targetFolder = 'uploads/qna'; // Nama folder yang akan digunakan
-
-      if (process.env.NODE_ENV === 'production') {
-        // ==========================================
-        // MODE PRODUCTION: UPLOAD KE CLOUDINARY
-        // ==========================================
-        const fileType = foto.type || '';
-        const isImage = fileType.startsWith('image/');
-        const resourceType = isImage ? 'image' : 'raw';
-        
-        // Untuk Cloudinary, tipe 'raw' wajib menyertakan ekstensi file pada public_id
-        const finalPublicId = isImage ? generatedName : `${generatedName}.${ext}`;
-
-        const uploadResult = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            { 
-              folder: targetFolder, 
-              resource_type: resourceType, 
-              public_id: finalPublicId 
-            },
-            (error, result) => {
-              if (error) {
-                console.error("Cloudinary Upload Error:", error);
-                reject(error);
-              } else {
-                resolve(result);
-              }
-            }
-          );
-          uploadStream.end(buffer);
-        });
-
-        // Menyimpan full URL dari Cloudinary ke database
-        fileName = (uploadResult as any).secure_url;
-
-      } else {
-        // ==========================================
-        // MODE DEVELOPMENT: UPLOAD KE FOLDER LOKAL
-        // ==========================================
-        fileName = `${generatedName}.${ext}`;
-        
-        const uploadDir = path.join(process.cwd(), 'public', ...targetFolder.split('/'));
-        await mkdir(uploadDir, { recursive: true });
-        
-        const filePath = path.join(uploadDir, fileName);
-        await writeFile(filePath, buffer);
-      }
+    if (foto instanceof File && foto.size > 0) {
+      const extension = foto.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'bin';
+      upload = await storeFileUpload({
+        file: foto,
+        folder: 'qna',
+        localFileName: `laporan-${nik}-${Date.now()}.${extension}`,
+      });
+      fileName = upload.reference;
     }
 
     // 1. FORMAT JUDUL & KATEGORI
@@ -112,6 +58,7 @@ export async function POST(req: Request) {
     ];
 
     await pool.query(query, values);
+    committed = true;
 
     return NextResponse.json({ 
       success: true, 
@@ -119,6 +66,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error('Error saat menyimpan laporan aduan:', error);
     return NextResponse.json(
       { success: false, message: 'Terjadi kesalahan pada server saat memproses laporan.' },

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2';
 import {pool} from '@/lib/db'; // Sesuaikan dengan koneksi database Anda
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,9 +17,15 @@ export async function GET(req: Request) {
     const values = [`%[Aduan Leader ${leaderName}]%`];
     
     // Sesuaikan eksekusi query dengan library DB Anda (contoh ini menggunakan mysql2/promise)
-    const [rows] = await pool.query(query, values);
+    const [rows] = await pool.query<RowDataPacket[]>(query, values);
     
-    return NextResponse.json({ success: true, data: rows });
+    return NextResponse.json({
+      success: true,
+      data: await Promise.all(rows.map(async (row) => ({
+        ...row,
+        file_url: await resolveUploadUrl(row.file_name, "qna"),
+      }))),
+    });
   } catch (error: any) {
     console.error('Error fetching laporan:', error);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

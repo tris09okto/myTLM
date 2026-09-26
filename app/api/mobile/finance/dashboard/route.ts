@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const runtime = "nodejs";
 
@@ -35,7 +36,13 @@ export async function GET(request: Request) {
               up_pengajuan, area, status, created_at
        FROM entri_data_perkiraan_pemasukan ORDER BY id DESC`,
     );
-    return NextResponse.json({ employees, income });
+    return NextResponse.json({
+      employees: await Promise.all(employees.map(async (employee) => ({
+        ...employee,
+        slip_url: await resolveUploadUrl(employee.slip_name, "slips"),
+      }))),
+      income,
+    });
   } catch {
     return NextResponse.json(
       { message: "Unable to load finance dashboard" },

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
-
-import { pool } from "@/lib/db";
+import { getAdminAttendanceRows } from "@/lib/mobile/admin/attendance-query";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
 
 export const runtime = "nodejs";
@@ -16,13 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "Invalid month" }, { status: 400 });
   }
   try {
-    const [attendance] = await pool.query<RowDataPacket[]>(
-      `SELECT nik, nama, unit_kerja, nama_supervisor, tanggal, waktu_masuk,
-              waktu_keluar, lokasi, status FROM absensi
-       WHERE DATE_FORMAT(tanggal, '%Y-%m') = ?
-       ORDER BY tanggal ASC, waktu_masuk ASC`,
-      [month],
-    );
+    const attendance = await getAdminAttendanceRows(month);
     return NextResponse.json({ attendance });
   } catch {
     return NextResponse.json({ message: "Unable to load attendance" }, { status: 500 });

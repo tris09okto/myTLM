@@ -1,19 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { v2 as cloudinary } from 'cloudinary';
 
 import { authOptions } from '@/lib/auth';
 import { pool } from '@/lib/db';
-
-// Konfigurasi Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from '@/lib/uploads';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -31,6 +23,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
   }
 
+  let upload: StoredUpload | undefined;
+  let committed = false;
   try {
     const [reports]: any = await pool.query(
       `SELECT pengirim_role FROM pesan_notifikasi
@@ -44,44 +38,12 @@ export async function POST(request: Request) {
     if (file instanceof File && file.size > 0) {
       const originalExt = path.extname(file.name).replace(/[^.a-zA-Z0-9]/g, '').slice(0, 12);
       const generatedUUID = randomUUID();
-      const targetFolder = 'uploads/laporan-direktur';
-      
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      if (process.env.NODE_ENV === 'production') {
-        const fileType = file.type || ''; 
-        const isImage = fileType.startsWith('image/');
-        const resourceType = isImage ? 'image' : 'raw';
-
-        const publicId = isImage ? generatedUUID : `${generatedUUID}${originalExt}`;
-
-        const uploadResult = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            { 
-              folder: targetFolder, 
-              resource_type: resourceType,
-              public_id: publicId
-            },
-            (error, result) => {
-              if (error) {
-                console.error("Cloudinary Upload Error:", error);
-                reject(error);
-              } else {
-                resolve(result);
-              }
-            }
-          );
-          uploadStream.end(buffer);
-        });
-
-        fileName = (uploadResult as any).secure_url;
-      } else {
-        fileName = `${generatedUUID}${originalExt}`;
-        const localFolder = path.join(process.cwd(), 'public', targetFolder);
-        await mkdir(localFolder, { recursive: true });
-        await writeFile(path.join(localFolder, fileName), buffer);
-      }
+      upload = await storeFileUpload({
+        file,
+        folder: 'laporan-direktur',
+        localFileName: `${generatedUUID}${originalExt}`,
+      });
+      fileName = upload.reference;
     }
 
     const connection = await pool.getConnection();
@@ -95,6 +57,7 @@ export async function POST(request: Request) {
       );
       await connection.query('UPDATE pesan_notifikasi SET is_read = 1 WHERE id = ?', [id]);
       await connection.commit();
+      committed = true;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -103,6 +66,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ success: true, message: 'Tanggapan berhasil dikirim' });
   } catch (error) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error("Gagal mengirim tanggapan:", error);
     return NextResponse.json({ success: false, message: 'Gagal mengirim tanggapan' }, { status: 500 });
   }

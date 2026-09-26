@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {pool} from '@/lib/db'; // Pastikan path ini sesuai dengan file koneksi database Anda
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export async function GET(request) {
   try {
@@ -36,7 +37,10 @@ export async function GET(request) {
     // 4. Kembalikan respons ke frontend
     if (rows.length > 0) {
       // Jika data gajinya sudah pernah dibuat oleh Keuangan (meskipun belum di-share)
-      return NextResponse.json({ success: true, data: rows[0] });
+      return NextResponse.json({
+        success: true,
+        data: { ...rows[0], slip_url: await resolveUploadUrl(rows[0].slip_name, "slips") },
+      });
     } else {
       // Jika data gajinya benar-benar kosong di bulan ini
       return NextResponse.json({ success: true, data: null });

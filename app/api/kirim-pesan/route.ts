@@ -1,159 +1,127 @@
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { v2 as cloudinary } from 'cloudinary';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 
-// Konfigurasi Cloudinary (Otomatis mengambil dari environment variables)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { pool } from '@/lib/db';
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload, type UploadFolder } from '@/lib/uploads';
+
+interface ReportRow extends RowDataPacket {
+  id: number;
+  nik: string;
+  pesan: string | null;
+}
 
 export async function POST(request: Request) {
+  const formData = await request.formData();
+  const senderValue = formData.get('pengirimRole');
+  const recipientValue = formData.get('nikTujuan');
+  const typeValue = formData.get('tipe');
+  const contentValue = formData.get('konten');
+  const fileValue = formData.get('file_lampiran');
+
+  if (typeof senderValue !== 'string' || !senderValue.trim() ||
+      typeof recipientValue !== 'string' || !recipientValue.trim() ||
+      typeof typeValue !== 'string' || !typeValue.trim() ||
+      typeof contentValue !== 'string' || !contentValue.trim() ||
+      (fileValue !== null && !(fileValue instanceof File))) {
+    return NextResponse.json({ success: false, message: 'Data pesan tidak valid.' }, { status: 400 });
+  }
+
+  const pengirimRole = senderValue.trim();
+  const nikTujuan = recipientValue.trim();
+  const tipe = typeValue.trim();
+  const konten = contentValue.trim();
+  const fileLampiran = fileValue instanceof File && fileValue.size > 0 ? fileValue : null;
+  const isDirector = pengirimRole.toLowerCase() === 'direktur';
+  const isEmployeeReply = ['MO', 'HRD'].includes(nikTujuan.toUpperCase()) &&
+    !['MO', 'HRD', 'DIREKTUR', 'ADMIN'].includes(pengirimRole.toUpperCase());
+
+  let folder: UploadFolder = 'admin';
+  let prefix = 'lampiran_';
+  if (isDirector) {
+    folder = 'direktur';
+    prefix = 'instruksi_';
+  } else if (isEmployeeReply) {
+    folder = 'balasan_pegawai';
+    prefix = 'balasan_pegawai_';
+  }
+
+  const isReportReply = (pengirimRole.toUpperCase() === 'MO' || pengirimRole.toLowerCase() === 'supervisor') &&
+    (tipe.toLowerCase().includes('laporan') || tipe.toLowerCase().includes('aduan') || tipe.toLowerCase().includes('balasan'));
+  const broadcastFlags = ['ALL', 'ALL_FRONTING', 'ALL_NON_FRONTING', 'HRD', 'MO', 'DIREKTUR', 'KEUANGAN'];
+
+  let report: ReportRow | undefined;
+  if (isReportReply && !broadcastFlags.includes(nikTujuan.toUpperCase())) {
+    const [reports] = await pool.query<ReportRow[]>(
+      `SELECT id, nik, pesan FROM laporan_aduan
+       WHERE nik = ? OR id = ? ORDER BY created_at DESC LIMIT 1`,
+      [nikTujuan, nikTujuan],
+    );
+    report = reports[0];
+  }
+
+  let upload: StoredUpload | undefined;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
   try {
-    const formData = await request.formData();
-    const pengirimRole = formData.get('pengirimRole') as string; 
-    let nikTujuan = formData.get('nikTujuan') as string; 
-    const tipe = formData.get('tipe') as string;
-    const konten = formData.get('konten') as string;
-    const fileLampiran = formData.get('file_lampiran');
-
-    let safeFileName: string | null = null; // Menentukan tipe secara eksplisit
-
-    if (fileLampiran && fileLampiran instanceof File && fileLampiran.size > 0) {
-      
-      // --- PENYESUAIAN PREFIX & FOLDER DINAMIS ---
-      const isDirekturTarget = pengirimRole?.toLowerCase() === 'direktur';
-      
-      // Deteksi jika yang mengirim adalah pegawai (bukan admin/MO/HRD) dan tujuannya adalah MO/HRD
-      const isBalasanPegawai = ['MO', 'HRD'].includes(nikTujuan?.toUpperCase()) && 
-                               !['MO', 'HRD', 'DIREKTUR', 'ADMIN'].includes(pengirimRole?.toUpperCase());
-
-      let prefix = 'lampiran_';
-      let targetFolder = 'uploads/admin';
-
-      if (isDirekturTarget) {
-        prefix = 'instruksi_';
-        targetFolder = 'uploads/direktur';
-      } else if (isBalasanPegawai) {
-        prefix = 'balasan_pegawai_';
-        targetFolder = 'uploads/balasan_pegawai'; // File balasan pegawai dipisah agar rapi
-      }
-
+    let fileReference: string | null = null;
+    if (fileLampiran) {
       const originalFileName = fileLampiran.name.replace(/\s+/g, '_');
-      const generatedFileName = `${prefix}${Date.now()}_${originalFileName}`;
-
-      const bytes = await fileLampiran.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      if (process.env.NODE_ENV === 'production') {
-        // ==========================================
-        // MODE PRODUCTION: UPLOAD KE CLOUDINARY
-        // ==========================================
-        const fileType = fileLampiran.type || ''; 
-        const isImage = fileType.startsWith('image/');
-        const resourceType = isImage ? 'image' : 'raw';
-
-        const fileNameWithoutExt = generatedFileName.substring(0, generatedFileName.lastIndexOf('.')) || generatedFileName;
-        const finalPublicId = isImage ? fileNameWithoutExt : generatedFileName;
-
-        const uploadResult = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            { 
-              folder: targetFolder, 
-              resource_type: resourceType, 
-              public_id: finalPublicId     
-            },
-            (error, result) => {
-              if (error) {
-                console.error("Cloudinary Upload Error:", error);
-                reject(error);
-              } else {
-                resolve(result);
-              }
-            }
-          );
-          uploadStream.end(buffer);
-        });
-
-        // Menyimpan full URL Cloudinary ke database
-        safeFileName = (uploadResult as any).secure_url;
-
-      } else {
-        // ==========================================
-        // MODE DEVELOPMENT: UPLOAD KE FOLDER LOKAL
-        // ==========================================
-        const uploadDir = path.join(process.cwd(), 'public', ...targetFolder.split('/'));
-
-        await fs.mkdir(uploadDir, { recursive: true });
-        
-        const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, generatedFileName);
-        await fs.writeFile(filePath, buffer);
-        
-        safeFileName = generatedFileName;
-      }
+      upload = await storeFileUpload({
+        file: fileLampiran,
+        folder,
+        localFileName: `${prefix}${Date.now()}_${originalFileName}`,
+      });
+      fileReference = upload.reference;
     }
 
-    // --- PENANGANAN KHUSUS BALASAN LAPORAN/ADUAN ---
-    const isBalasanLaporan = 
-      (pengirimRole?.toUpperCase() === 'MO' || pengirimRole?.toLowerCase() === 'supervisor') && 
-      (tipe?.toLowerCase().includes('laporan') || tipe?.toLowerCase().includes('aduan') || tipe?.toLowerCase().includes('balasan'));
-
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
     let targetNik = nikTujuan;
 
-    // Kumpulan penanda Broadcast yang tidak boleh dicari di tabel laporan_aduan
-    const isBroadcastFlag = ['ALL', 'ALL_FRONTING', 'ALL_NON_FRONTING', 'HRD', 'MO', 'DIREKTUR', 'KEUANGAN'].includes(nikTujuan?.toUpperCase());
-
-    if (isBalasanLaporan && nikTujuan && !isBroadcastFlag) {
-      // Cari data laporan berdasarkan NIK atau ID yang dikirim untuk memastikan NIK valid & memperbarui laporan_aduan
-      const [laporanRows] = await pool.query(
-        `SELECT id, nik, pesan FROM laporan_aduan WHERE nik = ? OR id = ? ORDER BY created_at DESC LIMIT 1`,
-        [nikTujuan, nikTujuan]
-      ) as [any[], any];
-
-      if (laporanRows.length > 0) {
-        const laporan = laporanRows[0];
-        targetNik = laporan.nik; // PAKSA targetNik menggunakan NIK asli dari tabel laporan_aduan
-        
-        const currentPesan = laporan.pesan || '';
-        const updatedPesan = currentPesan.includes('\n\nJawaban :\n')
-          ? currentPesan.split('\n\nJawaban :\n')[0] + `\n\nJawaban :\n${konten}`
-          : currentPesan + `\n\nJawaban :\n${konten}`;
-
-        // Update teks jawaban di laporan_aduan
-        await pool.query(
-          `UPDATE laporan_aduan SET pesan = ? WHERE id = ?`,
-          [updatedPesan, laporan.id]
-        );
-      }
+    if (report) {
+      targetNik = report.nik;
+      const currentMessage = report.pesan ?? '';
+      const updatedMessage = currentMessage.includes('\n\nJawaban :\n')
+        ? `${currentMessage.split('\n\nJawaban :\n')[0]}\n\nJawaban :\n${konten}`
+        : `${currentMessage}\n\nJawaban :\n${konten}`;
+      await connection.query('UPDATE laporan_aduan SET pesan = ? WHERE id = ?', [updatedMessage, report.id]);
     }
 
-    // --- LOGIKA PENYIMPANAN NOTIFIKASI KE DATABASE ---
-    if (pengirimRole?.toLowerCase() === 'direktur' && nikTujuan === 'ALL') {
-      const targetDivisions = ['MO', 'HRD', 'Keuangan'];
-      for (const divisi of targetDivisions) {
-        await pool.query(
-          `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read) 
+    if (isDirector && nikTujuan === 'ALL') {
+      for (const division of ['MO', 'HRD', 'Keuangan']) {
+        await connection.query(
+          `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
            VALUES (?, ?, ?, ?, ?, 0)`,
-          [pengirimRole, divisi, tipe, konten, safeFileName]
+          [pengirimRole, division, tipe, konten, fileReference],
         );
       }
     } else {
-      // Menyimpan pesan. Jika ini balasan dari pegawai, targetNik akan bernilai "MO" atau "HRD" 
-      // yang akan tersimpan dengan benar di kolom penerima_nik.
-      await pool.query(
-        `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read) 
+      await connection.query(
+        `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
          VALUES (?, ?, ?, ?, ?, 0)`,
-        [pengirimRole, targetNik || 'ALL', tipe, konten, safeFileName]
+        [pengirimRole, targetNik || 'ALL', tipe, konten, fileReference],
       );
     }
 
+    await connection.commit();
+    committed = true;
     return NextResponse.json({ success: true, message: 'Pesan/Balasan berhasil dikirim.' });
-
   } catch (error) {
-    console.error("Gagal kirim pesan:", error);
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error('Gagal membatalkan transaksi pesan:', rollbackError);
+      }
+    }
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
+    console.error('Gagal kirim pesan:', error);
     return NextResponse.json({ success: false, message: 'Kesalahan internal server' }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {pool} from '@/lib/db'; // Sesuaikan dengan koneksi database Anda
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export async function GET() {
   try {
@@ -7,7 +8,13 @@ export async function GET() {
     const query = `SELECT * FROM qna_materi WHERE kategori = 'Aduan Super Admin' ORDER BY created_at DESC`;
     const [rows] = await pool.query(query);
     
-    return NextResponse.json({ success: true, data: rows });
+    return NextResponse.json({
+      success: true,
+      data: await Promise.all(rows.map(async (row) => ({
+        ...row,
+        file_url: await resolveUploadUrl(row.file_name, "qna"),
+      }))),
+    });
   } catch (error) {
     console.error('Error fetching laporan super admin:', error);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

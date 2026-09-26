@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { pool } from '@/lib/db';
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function POST(req) {
+  let upload;
+  let committed = false;
   try {
     const formData = await req.formData();
     
@@ -19,20 +20,15 @@ export async function POST(req) {
     let queryParams = [tipe, judul, deskripsi, berlaku_sampai, status];
 
     // Jika user mengunggah gambar baru saat mengedit
-    if (file && typeof file === 'object' && file.name) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      
-      const filename = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-      const uploadDir = path.join(process.cwd(), 'public/uploads/super-admin/produk');
-      const uploadPath = path.join(uploadDir, filename);
-      
-      // Pastikan folder ada
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(uploadPath, buffer);
+    if (file instanceof File && file.name) {
+      upload = await storeFileUpload({
+        file,
+        folder: 'super-admin/produk',
+        localFileName: `${Date.now()}-${file.name.replace(/\s+/g, '_')}`,
+      });
 
       filenameQueryPart = ", gambar_file = ?";
-      queryParams.push(filename);
+      queryParams.push(upload.reference);
     }
 
     queryParams.push(id); // Untuk klausa WHERE id = ?
@@ -44,6 +40,7 @@ export async function POST(req) {
     `;
     
     await pool.execute(query, queryParams);
+    committed = true;
 
     return NextResponse.json({ 
       success: true, 
@@ -51,6 +48,7 @@ export async function POST(req) {
     }, { status: 200 });
 
   } catch (error) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error("Error updating produk/promo:", error);
     return NextResponse.json({ 
       success: false, 
