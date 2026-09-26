@@ -1,122 +1,109 @@
 import { NextResponse } from 'next/server';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+
 import { pool } from '@/lib/db';
-import { writeFile } from 'fs/promises';
-import path from 'path';
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from '@/lib/uploads';
+
+interface SupervisorRow extends RowDataPacket { supervisor: string | null }
+interface UsernameRow extends RowDataPacket { username: string }
 
 export async function POST(request: Request) {
-  try {
-    const formData = await request.formData();
-    
-    const target = formData.get('target') as string || 'admin_mo_spv';
-    const pesan = formData.get('pesan') as string;
-    const nik = formData.get('nik') as string;
-    const nama = formData.get('nama') as string;
-    const foto = formData.get('foto') as File | null;
+  const formData = await request.formData();
+  const targetValue = formData.get('target');
+  const target = typeof targetValue === 'string' ? targetValue : 'admin_mo_spv';
+  const pesan = formData.get('pesan');
+  const nik = formData.get('nik');
+  const nama = formData.get('nama');
+  const foto = formData.get('foto');
 
-    if (!pesan || !nik) {
-      return NextResponse.json(
-        { success: false, message: 'Pesan laporan dan NIK tidak boleh kosong.' }, 
-        { status: 400 }
+  if (typeof pesan !== 'string' || !pesan.trim() || typeof nik !== 'string' || !nik.trim() ||
+      (foto !== null && (!(foto instanceof File) || foto.size > 10_000_000))) {
+    return NextResponse.json(
+      { success: false, message: 'Pesan laporan dan NIK tidak boleh kosong.' },
+      { status: 400 },
+    );
+  }
+
+  let upload: StoredUpload | undefined;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
+  try {
+    const [employeeRows] = await pool.query<SupervisorRow[]>(
+      'SELECT supervisor FROM data_non_fronting WHERE nik = ? LIMIT 1', [nik],
+    );
+    const supervisorName = employeeRows[0]?.supervisor;
+    let supervisorUsername: string | undefined;
+    if (supervisorName) {
+      const [users] = await pool.query<UsernameRow[]>(
+        'SELECT username FROM data_non_fronting WHERE nama = ? OR username = ? LIMIT 1',
+        [supervisorName, supervisorName],
       );
+      supervisorUsername = users[0]?.username;
+    }
+
+    let moUsernames: string[] = [];
+    if (target === 'admin_mo_spv') {
+      const [targetUsers] = await pool.query<UsernameRow[]>(
+        "SELECT username FROM users WHERE LOWER(jabatan) LIKE '%mo%'",
+      );
+      moUsernames = targetUsers.map((user) => user.username);
     }
 
     let fileName: string | null = null;
-
-    // 1. Proses Upload File Foto jika ada
-    if (foto && foto.size > 0) {
-      const bytes = await foto.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
+    if (foto instanceof File && foto.size > 0) {
       const safeOriginalName = foto.name.replace(/\s+/g, '_');
-      fileName = `laporan_${nik}_${Date.now()}_${safeOriginalName}`;
-      const uploadPath = path.join(process.cwd(), 'public', 'uploads', 'non-fronting', fileName);
-
-      await writeFile(uploadPath, buffer);
+      upload = await storeFileUpload({
+        file: foto,
+        folder: 'non-fronting',
+        localFileName: `laporan_${nik}_${Date.now()}_${safeOriginalName}`,
+        resourceType: 'image',
+      });
+      fileName = upload.reference;
     }
 
-    // 2. Simpan data laporan ke dalam tabel laporan_aduan
-    await pool.query(
-      `INSERT INTO laporan_aduan (nik, nama, target, pesan, foto, created_at) 
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    await connection.query(
+      `INSERT INTO laporan_aduan (nik, nama, target, pesan, foto, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
-      [nik, nama, target, pesan, fileName]
+      [nik, nama, target, pesan.trim(), fileName],
     );
 
-    // 3. Ambil nama supervisor langsung dari kolom 'supervisor' di tabel data_non_fronting berdasarkan NIK pegawai
-    const [pegawaiRows] = await pool.query(
-      `SELECT supervisor FROM data_non_fronting WHERE nik = ?`,
-      [nik]
-    ) as [any[], any];
-
-    const namaSupervisor = pegawaiRows[0]?.supervisor;
-
-    // 4. Cari username login dari supervisor tersebut untuk dikirimi notifikasi
-    let penerimaUsername: string | null = null;
-    if (namaSupervisor) {
-      const [userRows] = await pool.query(
-        `SELECT username FROM data_non_fronting WHERE nama = ? OR username = ?`,
-        [namaSupervisor, namaSupervisor]
-      ) as [any[], any];
-
-      if (userRows.length > 0) {
-        penerimaUsername = userRows[0].username;
-      }
-    }
-
-    // 5. Kirim notifikasi KE TABEL pesan_notifikasi HANYA kepada Supervisor yang bersangkutan
-    if (penerimaUsername) {
-      const kontenNotif = `[Laporan Pegawai] Dari: ${nama} (${nik}). Pesan: "${pesan}"`;
-      const tipePesan = 'Laporan Pegawai';
-      const pengirimRole = nik;
-
-      await pool.query(
+    if (supervisorUsername) {
+      await connection.query(
         `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at)
-         VALUES (?, ?, ?, ?, ?, 0, NOW())`,
-        [pengirimRole, penerimaUsername, tipePesan, kontenNotif, fileName]
+         VALUES (?, ?, 'Laporan Pegawai', ?, ?, 0, NOW())`,
+        [nik, supervisorUsername, `[Laporan Pegawai] Dari: ${nama} (${nik}). Pesan: "${pesan.trim()}"`, fileName],
       );
     }
 
-    // 3. Otomatis Kirim Notifikasi ke Admin MO dan Supervisor (SPV)
-    if (target === 'admin_mo_spv') {
-      // Cari username / penerima dari user yang memiliki jabatan Admin MO atau Supervisor di database
-      const [targetUsers] = await pool.query(
-        `SELECT username FROM users 
-         WHERE LOWER(jabatan) LIKE '%mo%'`,
-      ) as [any[], any];
-
-      if (targetUsers && targetUsers.length > 0) {
-        const kontenNotif = `[Laporan Baru] Dari Pegawai: ${nama} (${nik}). Pesan: "${pesan}"`;
-        const tipePesan = 'Laporan Pegawai';
-
-        // Masukkan notifikasi ke masing-masing Admin MO dan Supervisor yang ditemukan 
-        // Menggunakan tabel dan kolom yang sesuai dengan struktur pesan_notifikasi Anda
-        for (const user of targetUsers) {
-            const user_role = user.username;
-        
-            if (user_role === 'adminmo') {
-                await pool.query(
-                `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at)
-                    VALUES (?, ?, ?, ?, ?, 0, NOW())`,
-                [nik, 'MO', tipePesan, kontenNotif, fileName]
-                );
-            }
-            
-        }
-      }
+    if (target === 'admin_mo_spv' && moUsernames.includes('adminmo')) {
+      await connection.query(
+        `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at)
+         VALUES (?, 'MO', 'Laporan Pegawai', ?, ?, 0, NOW())`,
+        [nik, `[Laporan Baru] Dari Pegawai: ${nama} (${nik}). Pesan: "${pesan.trim()}"`, fileName],
+      );
     }
 
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: 'Laporan berhasil dikirim dan notifikasi telah diteruskan ke Supervisor & Admin MO.' 
-      }, 
-      { status: 200 }
-    );
-
+    await connection.commit();
+    committed = true;
+    return NextResponse.json({
+      success: true,
+      message: 'Laporan berhasil dikirim dan notifikasi telah diteruskan ke Supervisor & Admin MO.',
+    }, { status: 200 });
   } catch (error) {
+    if (connection && transactionStarted && !committed) {
+      try { await connection.rollback(); } catch (rollbackError) { console.error('Gagal membatalkan transaksi laporan:', rollbackError); }
+    }
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error('Database/Server Error pada /api/pegawai/laporan-aduan-non-fronting:', error);
     return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan internal pada server.' }, 
-      { status: 500 }
+      { success: false, message: 'Terjadi kesalahan internal pada server.' },
+      { status: 500 },
     );
+  } finally {
+    connection?.release();
   }
 }

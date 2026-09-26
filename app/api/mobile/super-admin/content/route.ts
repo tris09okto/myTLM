@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import type { PoolConnection } from "mysql2/promise";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -14,15 +15,16 @@ function isContentKind(value: FormDataEntryValue | null): value is ContentKind {
   return value === "announcement" || value === "product";
 }
 
-async function storeAttachment(file: File | null, kind: ContentKind) {
+async function storeAttachment(file: File | null, kind: ContentKind): Promise<StoredUpload | null> {
   if (!file || file.size === 0) return null;
   if (file.size > 10_000_000) throw new Error("Attachment too large");
   const extension = path.extname(file.name).replace(/[^.a-zA-Z0-9]/g, "").slice(0, 12) || ".bin";
   const name = `${randomUUID()}${extension}`;
-  const folder = path.join(process.cwd(), "public", "uploads", "super-admin", kind === "announcement" ? "pengumuman" : "produk");
-  await mkdir(folder, { recursive: true });
-  await writeFile(path.join(folder, name), Buffer.from(await file.arrayBuffer()));
-  return name;
+  return storeFileUpload({
+    file,
+    folder: kind === "announcement" ? "super-admin/pengumuman" : "super-admin/produk",
+    localFileName: name,
+  });
 }
 
 function validText(value: FormDataEntryValue | null, max: number): value is string {
@@ -66,23 +68,31 @@ async function save(request: Request, editing: boolean) {
     return NextResponse.json({ message: "Tanggal berlaku tidak valid" }, { status: 400 });
   }
 
+  let upload: StoredUpload | null = null;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
   try {
-    const fileName = await storeAttachment(attachment instanceof File ? attachment : null, kind);
+    upload = await storeAttachment(attachment instanceof File ? attachment : null, kind);
+    const fileName = upload?.reference ?? null;
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
     if (kind === "announcement") {
       if (editing) {
         if (fileName) {
-          await pool.query(
+          await connection.query(
             `UPDATE pengumuman SET judul = ?, isi = ?, status = ?, jenis_pengumuman = ?, target_penerima = ?, file_lampiran = ? WHERE id = ?`,
             [title.trim(), body.trim(), status, category.trim(), target, fileName, id],
           );
         } else {
-          await pool.query(
+          await connection.query(
             `UPDATE pengumuman SET judul = ?, isi = ?, status = ?, jenis_pengumuman = ?, target_penerima = ? WHERE id = ?`,
             [title.trim(), body.trim(), status, category.trim(), target, id],
           );
         }
       } else {
-        await pool.query(
+        await connection.query(
           `INSERT INTO pengumuman (judul, isi, file_lampiran, status, jenis_pengumuman, target_penerima)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [title.trim(), body.trim(), fileName, status, category.trim(), target],
@@ -91,7 +101,7 @@ async function save(request: Request, editing: boolean) {
           const normalized = category.trim().toUpperCase();
           const messageType = normalized.includes("UMUM") ? "Pengumuman Umum"
             : normalized.includes("PRODUK") ? "Pengumuman Produk / Informasi" : "Pengumuman Pribadi";
-          await pool.query(
+          await connection.query(
             `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
              VALUES ('super admin', ?, ?, ?, ?, 0)`,
             [target, messageType, `[${title.trim()}]\n\n${body.trim()}`, fileName],
@@ -102,27 +112,42 @@ async function save(request: Request, editing: boolean) {
       const expiry = typeof expiration === "string" ? expiration.trim() || null : null;
       if (editing) {
         if (fileName) {
-          await pool.query(
+          await connection.query(
             `UPDATE produk_promo SET tipe = ?, judul = ?, deskripsi = ?, berlaku_sampai = ?, status = ?, gambar_file = ? WHERE id = ?`,
             [category.trim(), title.trim(), body.trim(), expiry, status, fileName, id],
           );
         } else {
-          await pool.query(
+          await connection.query(
             `UPDATE produk_promo SET tipe = ?, judul = ?, deskripsi = ?, berlaku_sampai = ?, status = ? WHERE id = ?`,
             [category.trim(), title.trim(), body.trim(), expiry, status, id],
           );
         }
       } else {
-        await pool.query(
+        await connection.query(
           `INSERT INTO produk_promo (tipe, judul, deskripsi, gambar_file, berlaku_sampai, status)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [category.trim(), title.trim(), body.trim(), fileName, expiry, status],
         );
       }
     }
+    await connection.commit();
+    committed = true;
     return NextResponse.json({ success: true, message: editing ? "Konten berhasil diperbarui." : "Konten berhasil dibuat." });
-  } catch {
+  } catch (error) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Unable to roll back content transaction", rollbackError);
+      }
+    }
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
+    console.error("Unable to save mobile content", error);
     return NextResponse.json({ message: "Konten gagal disimpan" }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }
 

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { writeFile, unlink } from "fs/promises";
-import path from "path";
 import bcrypt from 'bcryptjs';
 import { pool } from "@/lib/db";
 import nodemailer from "nodemailer";
+import { cleanupStoredUploads, storeFileUpload } from "@/lib/uploads";
 
 // Konfigurasi Email
 const transporter = nodemailer.createTransport({
@@ -18,6 +17,9 @@ const transporter = nodemailer.createTransport({
 
 export async function POST(req) {
   let connection;
+  let transactionStarted = false;
+  let committed = false;
+  const uploads = [];
   try {
     const formData = await req.formData();
     const id = formData.get("id");
@@ -62,50 +64,38 @@ export async function POST(req) {
     // 3. Penanganan Upload File Baru (Jika ada)
     let idCardName = oldData.idcard_file;
     const idCardFile = formData.get("idcard_file");
-    if (idCardFile && typeof idCardFile === "object" && idCardFile.name && idCardFile.name.trim() !== "") {
-      // Hapus file ID Card lama jika ada
-      if (oldData.idcard_file) {
-        try {
-          await unlink(path.join(process.cwd(), "public/uploads", oldData.idcard_file));
-        } catch (e) { console.error("Gagal hapus ID Card lama:", e); }
-      }
-      // Upload ID Card baru
-      const bytes = await idCardFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      idCardName = `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`;
-      await writeFile(path.join(process.cwd(), "public/uploads", idCardName), buffer);
+    if (idCardFile instanceof File && idCardFile.name && idCardFile.name.trim() !== "" && idCardFile.size > 0) {
+      const stored = await storeFileUpload({
+        file: idCardFile,
+        folder: "",
+        localFileName: `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`,
+      });
+      uploads.push(stored);
+      idCardName = stored.reference;
     }
 
     // Penanganan Surat Tugas Baru (Jika ada)
     let stFileString = oldData.st_file;
     const stFiles = formData.getAll("st_file");
-    const validStFiles = stFiles.filter(f => f && typeof f === "object" && f.name && f.name.trim() !== "");
+    const validStFiles = stFiles.filter(f => f instanceof File && f.name.trim() !== "" && f.size > 0).slice(0, 3);
     
     if (validStFiles.length > 0) {
-      // Hapus file Surat Tugas lama
-      if (oldData.st_file) {
-        const oldStList = oldData.st_file.split(",");
-        for (const oldFile of oldStList) {
-          try {
-            await unlink(path.join(process.cwd(), "public/uploads", oldFile.trim()));
-          } catch (e) { console.error("Gagal hapus ST lama:", e); }
-        }
-      }
-
-      // Upload Surat Tugas baru
       const savedStFileNames = [];
       for (const file of validStFiles) {
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        const fileName = `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
-        await writeFile(path.join(process.cwd(), "public/uploads", fileName), buffer);
-        savedStFileNames.push(fileName);
+        const stored = await storeFileUpload({
+          file,
+          folder: "",
+          localFileName: `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`,
+        });
+        uploads.push(stored);
+        savedStFileNames.push(stored.reference);
       }
-      stFileString = savedStFileNames.slice(0, 3).join(",");
+      stFileString = savedStFileNames.join(",");
     }
 
     // 4. Mulai Transaksi Database
     await connection.beginTransaction();
+    transactionStarted = true;
 
     // Update tabel users (Gunakan oldData.username untuk pencarian WHERE agar aman jika username diubah)
     await connection.query(
@@ -123,7 +113,9 @@ export async function POST(req) {
     );
 
     await connection.commit();
+    committed = true;
     connection.release();
+    connection = null;
 
     // 5. Kirim Email Notifikasi (Deklarasi hanya 1 kali di sini)
     const usernameChanged = username !== oldData.username;
@@ -156,10 +148,17 @@ export async function POST(req) {
     return NextResponse.json({ success: true, message: "Data berhasil diperbarui dan notifikasi dikirim!" });
 
   } catch (error) {
-    if (connection) { 
-      await connection.rollback(); 
-      connection.release(); 
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Gagal membatalkan transaksi akun:", rollbackError);
+      }
     }
+    if (connection) connection.release();
+    if (!committed && rolledBack) await cleanupStoredUploads(uploads);
     console.error("Gagal edit akun:", error);
     return NextResponse.json({ success: false, message: "Gagal memperbarui data: " + error.message }, { status: 500 });
   }

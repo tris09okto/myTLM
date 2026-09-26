@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import {pool} from '@/lib/db'; // Sesuaikan dengan koneksi database Anda (misal mysql2/pool)
+import type { RowDataPacket } from 'mysql2';
 // Jika menggunakan NextAuth untuk autentikasi:
 import { getServerSession } from 'next-auth';
 import { authOptions } from "@/lib/auth"; // Sesuaikan path authOptions Anda
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export async function GET(request: Request) {
   try {
@@ -27,11 +29,14 @@ export async function GET(request: Request) {
     `;
 
     // Eksekusi query database (contoh menggunakan mysql2 promise pool)
-    const [rows]: any = await pool.query(query, [userRole, userNik]);
+    const [rows] = await pool.query<RowDataPacket[]>(query, [userRole, userNik]);
 
     return NextResponse.json({
       success: true,
-      data: rows
+      data: await Promise.all(rows.map(async (row) => ({
+        ...row,
+        attachment_url: await resolveUploadUrl(row.file_lampiran),
+      }))),
     });
 
   } catch (error: any) {

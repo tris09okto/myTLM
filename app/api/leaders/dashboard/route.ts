@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,10 @@ export async function GET(request: Request) {
     ) as [any, any];
 
     return NextResponse.json({
-      leader: leaderRows[0],
+      leader: {
+        ...leaderRows[0],
+        idcard_file_url: await resolveUploadUrl(leaderRows[0].idcard_file, "leader/idcard"),
+      },
       team: teamRows,
       totalClosing: closingTotalRows[0]?.grand_total_closing || 0
     }, { status: 200 });

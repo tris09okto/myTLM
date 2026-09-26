@@ -3,7 +3,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
-import { resolveAttachmentPath } from "@/lib/mobile/attachment-path";
+import { resolveAttachmentPath, resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const runtime = "nodejs";
 
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({ notifications: await Promise.all(notifications.map(async (item) => ({
       ...item, attachment_path: await resolveAttachmentPath(item.file_lampiran),
+      attachment_url: await resolveUploadUrl(item.file_lampiran),
     }))) });
   } catch {
     return NextResponse.json({ message: "Unable to load notifications" }, { status: 500 });

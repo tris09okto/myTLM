@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -32,6 +32,10 @@ export async function POST(request: Request) {
   const employeeKind = kind as keyof typeof identityTables;
   const table = identityTables[employeeKind];
   const column = employeeKind === "leader" ? "username" : "nik";
+  let upload: StoredUpload | undefined;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
   try {
     const [people] = await pool.query<IdentityRow[]>(
       `SELECT ${column} AS identity FROM ${table} WHERE id = ? LIMIT 1`, [id],
@@ -39,34 +43,45 @@ export async function POST(request: Request) {
     if (!people[0]) return NextResponse.json({ message: "Employee not found" }, { status: 404 });
     const period = new Date().toISOString().slice(0, 7);
     const fileName = `${employeeKind}_${id}_${period}_${randomUUID()}.pdf`;
-    const folder = path.join(process.cwd(), "public", "uploads", "slips");
-    await mkdir(folder, { recursive: true });
-    await writeFile(path.join(folder, fileName), Buffer.from(await file.arrayBuffer()));
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
-      await connection.query(
-        `INSERT INTO transaksi_gaji
-         (employee_kind, id_pegawai, periode, estimasi, estimasi_shared, slip_name, slip_sent)
-         VALUES (?, ?, ?, 0, 0, ?, 1)
-         ON DUPLICATE KEY UPDATE slip_name = VALUES(slip_name), slip_sent = 1`,
-        [employeeKind, id, period, fileName],
-      );
-      await connection.query(
-        `INSERT INTO pesan_notifikasi
-         (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
-         VALUES ('Admin Keuangan', ?, 'Pengumuman Pribadi - Slip Gaji', ?, ?, 0)`,
-        [people[0].identity, `Slip gaji periode ${period} telah dibagikan oleh Keuangan.`, fileName],
-      );
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
+    upload = await storeFileUpload({ file, folder: "slips", localFileName: fileName, resourceType: "raw" });
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    await connection.query(
+      `INSERT INTO transaksi_gaji
+       (employee_kind, id_pegawai, periode, estimasi, estimasi_shared, slip_name, slip_sent)
+       VALUES (?, ?, ?, 0, 0, ?, 1)
+       ON DUPLICATE KEY UPDATE slip_name = VALUES(slip_name), slip_sent = 1`,
+      [employeeKind, id, period, upload.reference],
+    );
+    await connection.query(
+      `INSERT INTO pesan_notifikasi
+       (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
+       VALUES ('Admin Keuangan', ?, 'Pengumuman Pribadi - Slip Gaji', ?, ?, 0)`,
+      [people[0].identity, `Slip gaji periode ${period} telah dibagikan oleh Keuangan.`, upload.reference],
+    );
+    await connection.commit();
+    committed = true;
+    return NextResponse.json({
+      success: true,
+      message: "Slip gaji dibagikan",
+      fileName: upload.reference,
+      slip_url: await resolveUploadUrl(upload.reference, "slips"),
+    });
+  } catch (error) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Unable to roll back payslip transaction", rollbackError);
+      }
     }
-    return NextResponse.json({ success: true, message: "Slip gaji dibagikan", fileName });
-  } catch {
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
+    console.error("Unable to upload payslip", error);
     return NextResponse.json({ message: "Unable to upload payslip" }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }

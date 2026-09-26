@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -18,9 +20,13 @@ export async function GET(request: Request) {
       WHERE penerima_nik = ? OR penerima_nik = 'ALL' OR penerima_nik = 'SEMUA'
       ORDER BY created_at DESC
     `;
-    const [rows]: any = await pool.query(query, [nik]);
+    const [rows] = await pool.query<RowDataPacket[]>(query, [nik]);
 
-    return NextResponse.json(rows);
+    const rowsWithUrls = await Promise.all(rows.map(async (row) => ({
+      ...row,
+      attachment_url: await resolveUploadUrl(row.file_lampiran),
+    })));
+    return NextResponse.json(rowsWithUrls);
   } catch (error) {
     console.error('Fetch Notifikasi Error:', error);
     return NextResponse.json({ error: 'Gagal mengambil notifikasi' }, { status: 500 });

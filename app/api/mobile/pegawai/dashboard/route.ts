@@ -3,7 +3,8 @@ import type { RowDataPacket } from "mysql2";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
-import { resolveAttachmentPath } from "@/lib/mobile/attachment-path";
+import { resolveAttachmentPath, resolveUploadUrl } from "@/lib/mobile/attachment-path";
+import { taskOrderReplyTarget } from "@/lib/mobile/task-order";
 
 export const runtime = "nodejs";
 
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
        ORDER BY created_at DESC`,
     );
     const [messages] = await pool.query<RowDataPacket[]>(
-      `SELECT id, pengirim_role, tipe_pesan, konten, file_lampiran, is_read, created_at
+      `SELECT id, pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at
        FROM pesan_notifikasi
        WHERE penerima_nik IN (?, 'ALL', 'SEMUA', ?)
        ORDER BY created_at DESC`,
@@ -104,11 +105,53 @@ export async function GET(request: Request) {
       [salaryKind, principal.username],
     );
 
-    const messagesWithAttachments = await Promise.all(messages.map(async (message) => ({
-      ...message,
-      attachment_path: await resolveAttachmentPath(message.file_lampiran),
-    })));
-    return NextResponse.json({ profile, announcements, materials, messages: messagesWithAttachments, reports, income: income[0] ?? null });
+    const fileFolder = profile.kind === "fronting" ? "" : "pas_foto";
+    const taskFolder = profile.kind === "fronting" ? "" : "surat_tugas";
+    const profileWithUrls = profile.kind === "fronting"
+      ? {
+          ...profile,
+          idcard_file_url: await resolveUploadUrl(profile.idcard_file, fileFolder),
+          st_file_urls: await Promise.all((profile.st_file ?? "").split(",").map((entry) =>
+            resolveUploadUrl(entry.trim(), taskFolder))),
+        }
+      : {
+          ...profile,
+          pas_foto_url: await resolveUploadUrl(profile.pas_foto, fileFolder),
+          surat_tugas_url: await resolveUploadUrl(profile.surat_tugas, taskFolder),
+        };
+    const [announcementsWithUrls, materialsWithUrls, messagesWithAttachments, reportsWithUrls] = await Promise.all([
+      Promise.all(announcements.map(async (announcement) => ({
+        ...announcement,
+        file_lampiran_url: await resolveUploadUrl(announcement.file_lampiran, "super-admin/pengumuman"),
+      }))),
+      Promise.all(materials.map(async (material) => ({
+        ...material,
+        file_url: await resolveUploadUrl(material.file_name, "qna"),
+      }))),
+      Promise.all(messages.map(async (message) => ({
+        ...message,
+        attachment_path: await resolveAttachmentPath(message.file_lampiran),
+        attachment_url: await resolveUploadUrl(message.file_lampiran),
+        can_reply: message.tipe_pesan === "Surat Perintah Tugas" &&
+          message.penerima_nik === profile.nik && taskOrderReplyTarget(message.pengirim_role) !== null,
+      }))),
+      Promise.all(reports.map(async (report) => ({
+        ...report,
+        attachment_url: await resolveUploadUrl(report.attachment, profile.kind === "fronting" ? "qna" : "non-fronting"),
+      }))),
+    ]);
+    const currentIncome = income[0]
+      ? { ...income[0], slip_url: await resolveUploadUrl(income[0].slip_name, "slips") }
+      : null;
+
+    return NextResponse.json({
+      profile: profileWithUrls,
+      announcements: announcementsWithUrls,
+      materials: materialsWithUrls,
+      messages: messagesWithAttachments,
+      reports: reportsWithUrls,
+      income: currentIncome,
+    });
   } catch {
     return NextResponse.json({ message: "Unable to load employee dashboard" }, { status: 500 });
   }

@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function GET() {
   try {
     // Ambil semua data produk & promo dari database, urutkan dari yang terbaru
     const [rows] = await pool.execute('SELECT * FROM produk_promo ORDER BY created_at DESC');
     
+    const data = await Promise.all(rows.map(async (product) => ({
+      ...product,
+      gambar_file_url: await resolveUploadUrl(product.gambar_file, "super-admin/produk"),
+    })));
     return NextResponse.json({ 
       success: true, 
-      data: rows 
+      data,
     }, { status: 200 });
 
   } catch (error) {
@@ -23,6 +27,8 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  let upload;
+  let committed = false;
   try {
     const formData = await req.formData();
     
@@ -36,21 +42,13 @@ export async function POST(req) {
     let filename = null;
 
     // Proses simpan file gambar jika diunggah
-    if (file && typeof file === 'object' && file.name) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      
-      // Buat nama unik untuk file
-      filename = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-      
-      const uploadDir = path.join(process.cwd(), 'public/uploads/super-admin/produk');
-      const uploadPath = path.join(uploadDir, filename);
-      
-      // 1. Pastikan folder tujuan ada (buat otomatis jika belum ada)
-      await mkdir(uploadDir, { recursive: true });
-      
-      // 2. Simpan file
-      await writeFile(uploadPath, buffer);
+    if (file instanceof File && file.name) {
+      upload = await storeFileUpload({
+        file,
+        folder: 'super-admin/produk',
+        localFileName: `${Date.now()}-${file.name.replace(/\s+/g, '_')}`,
+      });
+      filename = upload.reference;
     }
       
     const query = `
@@ -58,6 +56,7 @@ export async function POST(req) {
       VALUES (?, ?, ?, ?, ?, ?)
     `;
     await pool.execute(query, [tipe, judul, deskripsi, filename, berlaku_sampai, status]);
+    committed = true;
 
     return NextResponse.json({ 
       success: true, 
@@ -65,6 +64,7 @@ export async function POST(req) {
     }, { status: 200 });
 
   } catch (error) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error("Error saving produk/promo:", error);
     return NextResponse.json({ 
       success: false, 

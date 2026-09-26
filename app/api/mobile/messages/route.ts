@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
-import { resolveAttachmentPath } from "@/lib/mobile/attachment-path";
+import { resolveAttachmentPath, resolveUploadUrl } from "@/lib/mobile/attachment-path";
+import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -58,6 +58,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ messages: await Promise.all(messages.map(async (message) => ({
       ...message,
       attachment_path: await resolveAttachmentPath(message.file_lampiran),
+      attachment_url: await resolveUploadUrl(message.file_lampiran, "admin"),
     }))) });
   } catch {
     return NextResponse.json({ message: "Unable to load messages" }, { status: 500 });
@@ -96,6 +97,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Tujuan tidak sesuai dengan kategori pesan" }, { status: 400 });
     }
   }
+  let upload: StoredUpload | undefined;
+  let connection: PoolConnection | undefined;
+  let transactionStarted = false;
+  let committed = false;
   try {
     if (!allowedFlags.has(destination.toUpperCase())) {
       const [matches] = await pool.query<RowDataPacket[]>(
@@ -108,23 +113,43 @@ export async function POST(request: Request) {
     let fileName: string | null = null;
     if (attachment instanceof File && attachment.size > 0) {
       const extension = path.extname(attachment.name).replace(/[^.a-zA-Z0-9]/g, "").slice(0, 12) || ".bin";
-      fileName = `${randomUUID()}${extension}`;
-      const folder = path.join(process.cwd(), "public", "uploads", "admin");
-      await mkdir(folder, { recursive: true });
-      await writeFile(path.join(folder, fileName), Buffer.from(await attachment.arrayBuffer()));
+      upload = await storeFileUpload({
+        file: attachment,
+        folder: "admin",
+        localFileName: `${randomUUID()}${extension}`,
+      });
+      fileName = upload.reference;
     }
     const sender = principal.jabatan || principal.role;
     const destinations = sender.toLowerCase() === "direktur" && destination === "ALL"
       ? ["MO", "HRD", "Keuangan"] : [destination];
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
     for (const target of destinations) {
-      await pool.query(
+      await connection.query(
         `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read)
          VALUES (?, ?, ?, ?, ?, 0)`,
         [sender, target, type.trim(), content.trim(), fileName],
       );
     }
+    await connection.commit();
+    committed = true;
     return NextResponse.json({ success: true, message: "Pesan berhasil dikirim." });
-  } catch {
+  } catch (error) {
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error("Unable to roll back message transaction", rollbackError);
+      }
+    }
+    if (!committed && rolledBack && upload) await cleanupStoredUploads([upload]);
+    console.error("Unable to send message", error);
     return NextResponse.json({ message: "Pesan gagal dikirim" }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }

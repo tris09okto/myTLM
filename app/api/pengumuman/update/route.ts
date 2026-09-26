@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { pool } from '@/lib/db';
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function POST(req: Request) {
+  let upload;
+  let committed = false;
   try {
     const formData = await req.formData();
     const id = formData.get('id') as string;
@@ -25,20 +26,15 @@ export async function POST(req: Request) {
     let queryParams: any[] = [judul, isi, status, jenisPengumuman, targetPenerima];
 
     // Jika admin mengunggah file baru saat update
-    if (file && typeof file === 'object' && file.name) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      
-      const filename = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-      const uploadDir = path.join(process.cwd(), 'public/uploads/super-admin/pengumuman');
-      const uploadPath = path.join(uploadDir, filename);
-      
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(uploadPath, buffer);
-
+    if (file instanceof File && file.name && file.size > 0) {
+      upload = await storeFileUpload({
+        file,
+        folder: 'super-admin/pengumuman',
+        localFileName: `${Date.now()}-${file.name.replace(/\s+/g, '_')}`,
+      });
       // Tambahkan update file_lampiran jika file baru disertakan
       query += `, file_lampiran = ?`;
-      queryParams.push(filename);
+      queryParams.push(upload.reference);
     }
 
     // Tambahkan kondisi WHERE id di akhir
@@ -47,6 +43,7 @@ export async function POST(req: Request) {
 
     // Eksekusi query dengan pool.execute
     await pool.execute(query, queryParams);
+    committed = true;
 
     return NextResponse.json({ 
       success: true, 
@@ -54,6 +51,7 @@ export async function POST(req: Request) {
     }, { status: 200 });
 
   } catch (error: any) {
+    if (!committed && upload) await cleanupStoredUploads([upload]);
     console.error("Error updating pengumuman:", error);
     return NextResponse.json({ 
       success: false, 

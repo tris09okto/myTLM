@@ -3,6 +3,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const runtime = "nodejs";
 
@@ -53,10 +54,20 @@ export async function GET(request: Request) {
       );
       return NextResponse.json({
         kind: "leader",
-        profile: { name: profile.nama_leader, area: profile.area, kanwil: profile.kanwil, penempatan: profile.penempatan, idcard_file: profile.idcard_file },
+        profile: {
+          name: profile.nama_leader,
+          area: profile.area,
+          kanwil: profile.kanwil,
+          penempatan: profile.penempatan,
+          idcard_file: profile.idcard_file,
+          idcard_file_url: await resolveUploadUrl(profile.idcard_file, "leader/idcard"),
+        },
         team,
         totalClosing: team.reduce((total, member) => total + Number(member.totalClosing), 0),
-        reports,
+        reports: await Promise.all(reports.map(async (report) => ({
+          ...report,
+          file_url: await resolveUploadUrl(report.file_name, "qna"),
+        }))),
       });
     }
 
@@ -84,7 +95,10 @@ export async function GET(request: Request) {
       kind: "supervisor",
       profile: { name, area: profile?.area_penempatan ?? "-" },
       team,
-      reports,
+      reports: await Promise.all(reports.map(async (report) => ({
+        ...report,
+        file_url: await resolveUploadUrl(report.file_name, "non-fronting"),
+      }))),
     });
   } catch {
     return NextResponse.json({ message: "Unable to load team dashboard" }, { status: 500 });

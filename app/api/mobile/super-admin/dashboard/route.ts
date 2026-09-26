@@ -3,6 +3,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const runtime = "nodejs";
 
@@ -28,11 +29,11 @@ export async function GET(request: Request) {
       "SELECT kanwil, area, penempatan FROM master_wilayah ORDER BY kanwil, area, penempatan",
     );
     const [announcements] = await pool.query<RowDataPacket[]>(
-      `SELECT id, judul, isi, status, jenis_pengumuman, target_penerima, created_at
+      `SELECT id, judul, isi, file_lampiran, status, jenis_pengumuman, target_penerima, created_at
        FROM pengumuman ORDER BY created_at DESC`,
     );
     const [products] = await pool.query<RowDataPacket[]>(
-      `SELECT id, tipe, judul, deskripsi, status, berlaku_sampai, created_at
+      `SELECT id, tipe, judul, deskripsi, gambar_file, status, berlaku_sampai, created_at
        FROM produk_promo ORDER BY created_at DESC`,
     );
     const [reports] = await pool.query<RowDataPacket[]>(
@@ -43,7 +44,49 @@ export async function GET(request: Request) {
       `SELECT id, judul, kategori, deskripsi, file_name, created_at
        FROM qna_materi WHERE kategori IN ('Produk', 'Promo', 'Sistem') ORDER BY created_at DESC`,
     );
-    return NextResponse.json({ fronting, nonFronting, leaders, areas, announcements, products, reports, materials });
+    const [frontingWithUrls, nonFrontingWithUrls, leadersWithUrls, announcementsWithUrls, productsWithUrls, reportsWithUrls, materialsWithUrls] = await Promise.all([
+      Promise.all(fronting.map(async (employee) => ({
+        ...employee,
+        idcard_file_url: await resolveUploadUrl(employee.idcard_file, ""),
+        st_file_urls: await Promise.all((employee.st_file ?? "").split(",").map((entry: string) =>
+          resolveUploadUrl(entry.trim(), ""))),
+      }))),
+      Promise.all(nonFronting.map(async (employee) => ({
+        ...employee,
+        pas_foto_url: await resolveUploadUrl(employee.pas_foto, "pas_foto"),
+        surat_tugas_url: await resolveUploadUrl(employee.surat_tugas, "surat_tugas"),
+      }))),
+      Promise.all(leaders.map(async (leader) => ({
+        ...leader,
+        idcard_file_url: await resolveUploadUrl(leader.idcard_file, "leader/idcard"),
+      }))),
+      Promise.all(announcements.map(async (announcement) => ({
+        ...announcement,
+        file_lampiran_url: await resolveUploadUrl(announcement.file_lampiran, "super-admin/pengumuman"),
+      }))),
+      Promise.all(products.map(async (product) => ({
+        ...product,
+        gambar_file_url: await resolveUploadUrl(product.gambar_file, "super-admin/produk"),
+      }))),
+      Promise.all(reports.map(async (report) => ({
+        ...report,
+        file_url: await resolveUploadUrl(report.file_name, "qna"),
+      }))),
+      Promise.all(materials.map(async (material) => ({
+        ...material,
+        file_url: await resolveUploadUrl(material.file_name, "qna"),
+      }))),
+    ]);
+    return NextResponse.json({
+      fronting: frontingWithUrls,
+      nonFronting: nonFrontingWithUrls,
+      leaders: leadersWithUrls,
+      areas,
+      announcements: announcementsWithUrls,
+      products: productsWithUrls,
+      reports: reportsWithUrls,
+      materials: materialsWithUrls,
+    });
   } catch {
     return NextResponse.json({ message: "Unable to load super admin dashboard" }, { status: 500 });
   }

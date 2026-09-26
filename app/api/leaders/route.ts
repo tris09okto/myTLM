@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2';
 import { pool } from '@/lib/db'; 
 import bcrypt from 'bcryptjs';
 import nodemailer from "nodemailer";
-import { writeFile } from "fs/promises";
-import path from "path";
-import fs from "fs";
+import { cleanupStoredUploads, storeImageDataUrl, type StoredUpload } from "@/lib/uploads";
+import { resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 // Konfigurasi Nodemailer Transporter
 const transporter = nodemailer.createTransport({
@@ -53,8 +53,12 @@ async function sendCredentialsEmail(toEmail: string, nama: string, username: str
 
 export async function GET() {
   try {
-    const [rows] = await pool.query('SELECT * FROM data_leader ORDER BY id DESC');
-    return NextResponse.json(rows);
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM data_leader ORDER BY id DESC');
+    const leadersWithUrls = await Promise.all(rows.map(async (leader) => ({
+      ...leader,
+      idcard_file_url: await resolveUploadUrl(leader.idcard_file, "leader/idcard"),
+    })));
+    return NextResponse.json(leadersWithUrls);
   } catch (error) {
     console.error("Database Error:", error);
     return NextResponse.json({ error: "Gagal mengambil data" }, { status: 500 });
@@ -62,6 +66,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let upload: StoredUpload | undefined;
+  let safeToCleanup = true;
+  let committed = false;
   try {
     const body = await req.json();
 
@@ -74,23 +81,16 @@ export async function POST(req: Request) {
     const areaStr = JSON.stringify(area || []);
     const penempatanStr = JSON.stringify(penempatan || []);
 
-    // --- PROSES FILE BASE64 ID CARD ---
     let idCardName = null;
     if (idcard_file && typeof idcard_file === 'string' && idcard_file.startsWith('data:image')) {
-      // Decode Base64
-      const matches = idcard_file.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
-      if (matches && matches.length === 3) {
-        const ext = matches[1]; 
-        const buffer = Buffer.from(matches[2], 'base64');
-        idCardName = `idcard_leader_${Date.now()}.${ext}`;
-        
-        const uploadDir = path.join(process.cwd(), "public/uploads/leader/idcard");
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        // Simpan file fisik
-        await writeFile(path.join(uploadDir, idCardName), buffer);
-      }
+      const subtype = /^data:image\/([A-Za-z0-9.+-]+);/.exec(idcard_file)?.[1] ?? "img";
+      const extension = subtype === "jpeg" ? "jpg" : subtype.split("+")[0].replace(/[^a-zA-Z0-9]/g, "") || "img";
+      upload = await storeImageDataUrl({
+        dataUrl: idcard_file,
+        folder: "leader/idcard",
+        localFileName: `idcard_leader_${Date.now()}.${extension}`,
+      });
+      idCardName = upload.reference;
     }
 
     // --- PROSES UPDATE / EDIT LEADER ---
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
 
       const oldLeader = oldRows[0];
       if (!oldLeader) {
+        if (upload) await cleanupStoredUploads([upload]);
         return NextResponse.json({ error: "Leader tidak ditemukan" }, { status: 404 });
       }
       const emailChanged = oldLeader.email !== email;
@@ -151,8 +152,14 @@ export async function POST(req: Request) {
           }
         }
         await connection.commit();
+        committed = true;
       } catch (error) {
-        await connection.rollback();
+        try {
+          await connection.rollback();
+        } catch (rollbackError) {
+          safeToCleanup = false;
+          console.error("Unable to roll back leader update", rollbackError);
+        }
         throw error;
       } finally {
         connection.release();
@@ -168,6 +175,7 @@ export async function POST(req: Request) {
     // --- PROSES INSERT / TAMBAH LEADER BARU DARI FORM ---
     else {
       if (!username?.trim() || !password?.trim()) {
+        if (upload) await cleanupStoredUploads([upload]);
         return NextResponse.json({ error: "Username dan password wajib diisi" }, { status: 400 });
       }
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -188,6 +196,7 @@ export async function POST(req: Request) {
         ) as [Array<{ username: string }>, unknown];
         if (existingUsers.length) {
           await connection.rollback();
+          if (upload) await cleanupStoredUploads([upload]);
           return NextResponse.json({ error: "Username sudah digunakan" }, { status: 409 });
         }
         [result] = await connection.query(query, values);
@@ -196,8 +205,14 @@ export async function POST(req: Request) {
           [username, hashedPassword]
         );
         await connection.commit();
+        committed = true;
       } catch (error) {
-        await connection.rollback();
+        try {
+          await connection.rollback();
+        } catch (rollbackError) {
+          safeToCleanup = false;
+          console.error("Unable to roll back leader creation", rollbackError);
+        }
         throw error;
       } finally {
         connection.release();
@@ -211,6 +226,7 @@ export async function POST(req: Request) {
     }
 
   } catch (error: any) {
+    if (!committed && safeToCleanup && upload) await cleanupStoredUploads([upload]);
     console.error("Database Error:", error);
     return NextResponse.json({ error: "Gagal menyimpan data: " + (error.message || error) }, { status: 500 });
   }

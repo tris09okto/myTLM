@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 /*export async function GET(request: Request) {
   try {
@@ -124,9 +126,12 @@ export async function GET(request: Request) {
       ORDER BY created_at DESC
     `;
     
-    const [notifRows] = await pool.execute(query, [paramInput, actualNik, targetBroadcast]);
+    const [notifRows] = await pool.execute<RowDataPacket[]>(query, [paramInput, actualNik, targetBroadcast]);
 
-    return NextResponse.json(notifRows, { status: 200 });
+    return NextResponse.json(await Promise.all(notifRows.map(async (notification) => ({
+      ...notification,
+      attachment_url: await resolveUploadUrl(notification.file_lampiran),
+    }))), { status: 200 });
   } catch (error) {
     console.error("Error fetching notifications:", error);
     return NextResponse.json({ success: false, message: "Gagal memuat notifikasi." }, { status: 500 });

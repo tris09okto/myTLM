@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 export async function GET(request: Request) {
   try {
@@ -12,7 +14,7 @@ export async function GET(request: Request) {
     }
 
     // Kueri dua arah: Mengambil pesan dari pihak1 ke pihak2, ATAU dari pihak2 ke pihak1
-    const [rows] = await pool.query(
+    const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT * FROM pesan_notifikasi 
        WHERE (pengirim_role = ? AND penerima_nik = ?) 
           OR (pengirim_role = ? AND penerima_nik = ?) 
@@ -20,7 +22,13 @@ export async function GET(request: Request) {
       [pihak1, pihak2, pihak2, pihak1]
     );
 
-    return NextResponse.json({ success: true, data: rows }, { status: 200 });
+    return NextResponse.json({
+      success: true,
+      data: await Promise.all(rows.map(async (row) => ({
+        ...row,
+        attachment_url: await resolveUploadUrl(row.file_lampiran),
+      }))),
+    }, { status: 200 });
   } catch (error) {
     console.error('Gagal mengambil history pesan:', error);
     return NextResponse.json({ success: false, message: 'Kesalahan internal server' }, { status: 500 });

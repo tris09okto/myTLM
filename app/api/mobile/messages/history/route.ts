@@ -3,7 +3,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { pool } from "@/lib/db";
 import { getMobilePrincipal } from "@/lib/mobile/auth/service";
-import { resolveAttachmentPath } from "@/lib/mobile/attachment-path";
+import { resolveAttachmentPath, resolveUploadUrl } from "@/lib/mobile/attachment-path";
 
 export const runtime = "nodejs";
 
@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ messages: await Promise.all(messages.map(async (message) => ({
       ...message,
       attachment_path: await resolveAttachmentPath(message.file_lampiran),
+      attachment_url: await resolveUploadUrl(message.file_lampiran),
     }))) });
   } catch {
     return NextResponse.json({ message: "Unable to load message history" }, { status: 500 });

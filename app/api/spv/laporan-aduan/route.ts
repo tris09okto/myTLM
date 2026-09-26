@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { resolveUploadUrl } from '@/lib/mobile/attachment-path';
 
 // GET: Menarik daftar laporan dari pegawai yang di bawah supervisi SPV tertentu
 export async function GET(request: Request) {
@@ -21,7 +22,13 @@ export async function GET(request: Request) {
       [spvName]
     ) as [any[], any];
 
-    return NextResponse.json({ success: true, data: rows }, { status: 200 });
+    return NextResponse.json({
+      success: true,
+      data: await Promise.all(rows.map(async (row) => ({
+        ...row,
+        file_url: await resolveUploadUrl(row.file_name, "non-fronting"),
+      }))),
+    }, { status: 200 });
   } catch (error) {
     console.error("Database Error pada GET /api/spv/laporan:", error);
     return NextResponse.json({ success: false, error: 'Gagal mengambil data laporan tim' }, { status: 500 });

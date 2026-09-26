@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
-import { writeFile } from 'fs/promises';
-import path from 'path';
-import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { sendAccountNotification } from '@/lib/mailer'; // <-- Import helper email
+import { cleanupStoredUploads, storeFileUpload } from '@/lib/uploads';
 
 export async function POST(req) {
   let connection;
+  let transactionStarted = false;
+  let committed = false;
+  const uploads = [];
   try {
     const formData = await req.formData();
     
@@ -37,28 +38,30 @@ export async function POST(req) {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(plainPassword, saltRounds);
 
-    // Folder Uploads Setup
-    const uploadDirFoto = path.join(process.cwd(), 'public/uploads/pas_foto');
-    const uploadDirST = path.join(process.cwd(), 'public/uploads/surat_tugas');
-    if (!fs.existsSync(uploadDirFoto)) fs.mkdirSync(uploadDirFoto, { recursive: true });
-    if (!fs.existsSync(uploadDirST)) fs.mkdirSync(uploadDirST, { recursive: true });
-
     // File Upload: Pas Foto
     const pasFoto = formData.get('pas_foto');
     let fotoName = null;
-    if (pasFoto && pasFoto !== 'null') {
-      const bufferFoto = Buffer.from(await pasFoto.arrayBuffer());
-      fotoName = `FOTO_${Date.now()}_${nik}_${pasFoto.name.replace(/\s+/g, '_')}`;
-      await writeFile(path.join(uploadDirFoto, fotoName), bufferFoto);
+    if (pasFoto instanceof File && pasFoto.size > 0) {
+      const stored = await storeFileUpload({
+        file: pasFoto,
+        folder: 'pas_foto',
+        localFileName: `FOTO_${Date.now()}_${nik}_${pasFoto.name.replace(/\s+/g, '_')}`,
+      });
+      uploads.push(stored);
+      fotoName = stored.reference;
     }
 
     // File Upload: Surat Tugas
     const suratTugas = formData.get('surat_tugas');
     let stName = null;
-    if (suratTugas && suratTugas !== 'null') {
-      const bufferST = Buffer.from(await suratTugas.arrayBuffer());
-      stName = `ST_${Date.now()}_${nik}_${suratTugas.name.replace(/\s+/g, '_')}`;
-      await writeFile(path.join(uploadDirST, stName), bufferST);
+    if (suratTugas instanceof File && suratTugas.size > 0) {
+      const stored = await storeFileUpload({
+        file: suratTugas,
+        folder: 'surat_tugas',
+        localFileName: `ST_${Date.now()}_${nik}_${suratTugas.name.replace(/\s+/g, '_')}`,
+      });
+      uploads.push(stored);
+      stName = stored.reference;
     }
 
     // Tentukan role login berdasarkan Unit Kerja
@@ -78,11 +81,14 @@ export async function POST(req) {
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
+    transactionStarted = true;
 
     // 1. Cek Ketersediaan Username
     const [existingUser] = await connection.query(`SELECT id FROM users WHERE username = ?`, [username]);
     if (existingUser.length > 0) {
       await connection.rollback();
+      transactionStarted = false;
+      await cleanupStoredUploads(uploads);
       return NextResponse.json({ success: false, message: 'Username sudah digunakan!' }, { status: 400 });
     }
 
@@ -101,6 +107,7 @@ export async function POST(req) {
     );
 
     await connection.commit();
+    committed = true;
 
     // --- KIRIM EMAIL PEMBERITAHUAN KE PEGAWAI ---
     if (email) {
@@ -113,7 +120,16 @@ export async function POST(req) {
     return NextResponse.json({ success: true, message: `Akun ${unit_kerja} berhasil dibuat dan email pemberitahuan dikirim!` });
 
   } catch (error) {
-    if (connection) await connection.rollback();
+    let rolledBack = !transactionStarted;
+    if (connection && transactionStarted && !committed) {
+      try {
+        await connection.rollback();
+        rolledBack = true;
+      } catch (rollbackError) {
+        console.error('Gagal membatalkan transaksi akun:', rollbackError);
+      }
+    }
+    if (!committed && rolledBack) await cleanupStoredUploads(uploads);
     console.error('Error create non-fronting:', error);
     return NextResponse.json({ success: false, message: 'Kesalahan sistem.', error: error.message }, { status: 500 });
   } finally {
