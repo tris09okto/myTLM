@@ -70,7 +70,7 @@ export async function GET(request: Request) {
     );
     const [materials] = await pool.query<RowDataPacket[]>(
       `SELECT id, judul, kategori, deskripsi, file_name, created_at
-       FROM qna_materi WHERE kategori NOT LIKE 'Aduan%'
+       FROM qna_materi
        ORDER BY created_at DESC`,
     );
     const [messages] = await pool.query<RowDataPacket[]>(
