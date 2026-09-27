@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const where = keyword ? `WHERE ${filterColumns[filterBy]} LIKE ?` : "";
+    const where = keyword ? `WHERE p.${filterColumns[filterBy]} LIKE ?` : "";
     const [team] = await pool.query<TeamRow[]>(
       `SELECT p.nik, p.nama, p.kanwil, p.area, p.penempatan,
               COALESCE(SUM(e.up_pengajuan), 0) AS omset
