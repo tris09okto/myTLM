@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     );
     const [income] = await pool.query<RowDataPacket[]>(
       `SELECT id, nik_fronting, nama_fronting, nama_nasabah, produk,
-              up_pengajuan, area, status, created_at
+              tgl_pengajuan, tgl_expired, up_pengajuan, area, status, created_at
        FROM entri_data_perkiraan_pemasukan ORDER BY id DESC`,
     );
     return NextResponse.json({
