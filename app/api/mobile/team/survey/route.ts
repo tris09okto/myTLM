@@ -8,7 +8,6 @@ import { cleanupStoredUploads, storeFileUpload, type StoredUpload } from "@/lib/
 
 export const runtime = "nodejs";
 
-interface SupervisorRow extends RowDataPacket { nama: string }
 interface RecipientRow extends RowDataPacket { jabatan: string }
 
 export async function POST(request: Request) {
@@ -29,11 +28,6 @@ export async function POST(request: Request) {
   let transactionStarted = false;
   let committed = false;
   try {
-    const [supervisors] = await pool.query<SupervisorRow[]>(
-      "SELECT nama FROM data_non_fronting WHERE username = ? AND jabatan = 'supervisor' LIMIT 1",
-      [principal.username],
-    );
-    const name = supervisors[0]?.nama ?? principal.username;
     const [recipients] = await pool.query<RecipientRow[]>(
       "SELECT jabatan FROM users WHERE LOWER(jabatan) LIKE '%mo%' OR LOWER(jabatan) LIKE '%hrd%'",
     );
@@ -55,14 +49,14 @@ export async function POST(request: Request) {
     await connection.query(
       `INSERT INTO survey_kunjungan (spv_username, spv_nama, keterangan, foto, created_at)
        VALUES (?, ?, ?, ?, NOW())`,
-      [principal.username, name, description.trim(), fileName],
+      [principal.username, principal.username, description.trim(), fileName],
     );
     for (const recipient of recipients) {
       await connection.query(
         `INSERT INTO pesan_notifikasi
          (pengirim_role, penerima_nik, tipe_pesan, konten, file_lampiran, is_read, created_at)
          VALUES (?, ?, 'Survey Kunjungan Lapangan', ?, ?, 0, NOW())`,
-        [principal.username, recipient.jabatan, `[Survey Kunjungan] Dari SPV: ${name} (${principal.username}). Keterangan: "${description.trim()}"`, fileName],
+        [principal.username, recipient.jabatan, `[Survey Kunjungan] Dari SPV: ${principal.username} (${principal.username}). Keterangan: "${description.trim()}"`, fileName],
       );
     }
     await connection.commit();
