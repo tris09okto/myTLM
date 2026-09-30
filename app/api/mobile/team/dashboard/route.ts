@@ -15,12 +15,6 @@ interface LeaderRow extends RowDataPacket {
   idcard_file: string | null;
 }
 
-interface SupervisorRow extends RowDataPacket {
-  nama: string;
-  username: string;
-  area_penempatan: string;
-}
-
 export async function GET(request: Request) {
   const principal = await getMobilePrincipal(request);
   if (!principal || (principal.role !== "leader" && principal.role !== "supervisor")) {
@@ -71,17 +65,10 @@ export async function GET(request: Request) {
       });
     }
 
-    const [profiles] = await pool.query<SupervisorRow[]>(
-      `SELECT nama, username, area_penempatan FROM data_non_fronting
-       WHERE username = ? AND jabatan = 'supervisor' LIMIT 1`,
-      [principal.username],
-    );
-    const profile = profiles[0];
-    const name = profile?.nama ?? principal.username;
     const [team] = await pool.query<RowDataPacket[]>(
       `SELECT nik, nama, jabatan, unit_kerja, area_penempatan
        FROM data_non_fronting WHERE supervisor = ? ORDER BY nama`,
-      [name],
+      [principal.username],
     );
     const [reports] = await pool.query<RowDataPacket[]>(
       `SELECT l.id, l.nik, l.nama, l.pesan AS deskripsi,
@@ -89,11 +76,11 @@ export async function GET(request: Request) {
        FROM laporan_aduan l
        JOIN data_non_fronting d ON l.nik = d.nik
        WHERE d.supervisor = ? ORDER BY l.created_at DESC`,
-      [name],
+      [principal.username],
     );
     return NextResponse.json({
       kind: "supervisor",
-      profile: { name, area: profile?.area_penempatan ?? "-" },
+      profile: { name: principal.username, area: "-" },
       team,
       reports: await Promise.all(reports.map(async (report) => ({
         ...report,

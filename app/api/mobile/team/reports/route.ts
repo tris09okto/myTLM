@@ -7,7 +7,6 @@ import { getMobilePrincipal } from "@/lib/mobile/auth/service";
 export const runtime = "nodejs";
 
 interface LeaderRow extends RowDataPacket { nama_leader: string }
-interface SupervisorRow extends RowDataPacket { nama: string }
 interface ReportRow extends RowDataPacket { deskripsi: string; nik: string; pesan: string; nama: string }
 
 export async function PUT(request: Request) {
@@ -44,16 +43,11 @@ export async function PUT(request: Request) {
         `${question}\n\nJawaban :\n${body.answer.trim()}`, body.id,
       ]);
     } else {
-      const [supervisors] = await pool.query<SupervisorRow[]>(
-        "SELECT nama FROM data_non_fronting WHERE username = ? AND jabatan = 'supervisor' LIMIT 1",
-        [principal.username],
-      );
-      const name = supervisors[0]?.nama ?? principal.username;
       const [reports] = await pool.query<ReportRow[]>(
         `SELECT l.nik, l.nama, l.pesan FROM laporan_aduan l
          JOIN data_non_fronting d ON l.nik = d.nik
          WHERE l.id = ? AND d.supervisor = ? LIMIT 1`,
-        [body.id, name],
+        [body.id, principal.username],
       );
       const report = reports[0];
       if (!report) return NextResponse.json({ message: "Report not found" }, { status: 404 });
@@ -64,12 +58,12 @@ export async function PUT(request: Request) {
       await pool.query(
         `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, is_read, created_at)
          VALUES (?, ?, 'Balasan Laporan Pegawai', ?, 0, NOW())`,
-        [name, report.nik, `[Balasan ${name}] Tanggapan untuk laporan Anda: "${answer}"`],
+        [principal.username, report.nik, `[Balasan ${principal.username}] Tanggapan untuk laporan Anda: "${answer}"`],
       );
       await pool.query(
         `UPDATE pesan_notifikasi SET konten = CONCAT(konten, ?), is_read = 0
          WHERE penerima_nik = 'MO' AND tipe_pesan = 'Laporan Pegawai' AND konten LIKE ?`,
-        [`\n\n[Respon Supervisor: ${name}]\n"${answer}"`, `%${report.nik}%`],
+        [`\n\n[Respon Supervisor: ${principal.username}]\n"${answer}"`, `%${report.nik}%`],
       );
     }
     return NextResponse.json({ success: true, message: "Balasan berhasil dikirim." });
