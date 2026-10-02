@@ -62,8 +62,7 @@ function cloudinaryUpload(options: {
     api_secret: apiSecret,
   });
   const id = randomUUID();
-  const publicId =
-    options.resourceType === "raw" ? `${id}${options.extension}` : id;
+  const publicId = `${id}${options.extension}`;
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -96,9 +95,8 @@ export async function storeUpload(
   }
 
   const extension = safeExtension(localFileName);
-  const resourceType =
-    options.resourceType ??
-    (options.contentType.startsWith("image/") ? "image" : "raw");
+  const resourceType = options.resourceType ??
+  (options.contentType.startsWith("image/") || options.contentType === "application/pdf" ? "image" : "raw");
 
   const hasCloudinaryCredentials = Boolean(
     process.env.CLOUDINARY_CLOUD_NAME &&
