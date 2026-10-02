@@ -1045,7 +1045,7 @@ export default function AdminDashboardClient({
                             {item.file_lampiran && (
                               <div className="mt-3 pt-2 border-t border-white/20">
                                 <a 
-                                  href={`/uploads/${item.file_lampiran}`} 
+                                  href={item.file_lampiran?.startsWith('http') ? item.file_lampiran : `/uploads/admin/${item.file_lampiran}`} 
                                   target="_blank" 
                                   rel="noopener noreferrer" 
                                   className={`text-xs font-semibold underline inline-flex items-center gap-1.5 ${isOurMessage ? 'text-white' : 'text-blue-600'}`}
