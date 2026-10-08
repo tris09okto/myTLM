@@ -81,7 +81,9 @@ export async function POST(req: Request) {
     const areaStr = JSON.stringify(area || []);
     const penempatanStr = JSON.stringify(penempatan || []);
 
-    let idCardName = null;
+    // The database column is NOT NULL, while the web and mobile forms allow
+    // leaders to be created without an ID-card attachment.
+    let idCardName: string | null = "";
     if (idcard_file && typeof idcard_file === 'string' && idcard_file.startsWith('data:image')) {
       const subtype = /^data:image\/([A-Za-z0-9.+-]+);/.exec(idcard_file)?.[1] ?? "img";
       const extension = subtype === "jpeg" ? "jpg" : subtype.split("+")[0].replace(/[^a-zA-Z0-9]/g, "") || "img";

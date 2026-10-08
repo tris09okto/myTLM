@@ -42,7 +42,7 @@ async function tambahEstimasiGaji(connection: any, idPegawai: number, periode: s
     );
   } else {
     await connection.query(
-      `INSERT INTO transaksi_gaji (employee_kind, id_pegawai, periode, estimasi, estimasi_shared, slip_sent) VALUES ('fronting', ?, ?, ?, 0, 0)`, 
+      `INSERT INTO transaksi_gaji (employee_kind, id_pegawai, periode, estimasi, estimasi_shared, slip_name, slip_sent) VALUES ('fronting', ?, ?, ?, 0, '', 0)`,
       [idPegawai, periode, nilai]
     );
   }

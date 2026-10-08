@@ -33,7 +33,8 @@ export async function GET(request: Request) {
        FROM pengumuman ORDER BY created_at DESC`,
     );
     const [products] = await pool.query<RowDataPacket[]>(
-      `SELECT id, tipe, judul, deskripsi, gambar_file, status, berlaku_sampai, created_at
+      `SELECT id, tipe, judul, deskripsi, gambar_file, status,
+              DATE_FORMAT(berlaku_sampai, '%Y-%m-%d') AS berlaku_sampai, created_at
        FROM produk_promo ORDER BY created_at DESC`,
     );
     const [reports] = await pool.query<RowDataPacket[]>(
