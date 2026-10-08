@@ -34,12 +34,21 @@ export async function POST(req) {
     const supervisor = formData.get('supervisor') || null;
     const plainPassword = formData.get('password'); // Password asli dari input form
 
+    const pasFoto = formData.get('pas_foto');
+    const suratTugas = formData.get('surat_tugas');
+    if (!(pasFoto instanceof File) || pasFoto.size === 0 ||
+        !(suratTugas instanceof File) || suratTugas.size === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Pas foto dan surat tugas wajib diunggah.' },
+        { status: 400 }
+      );
+    }
+
     // -- 2. ENCRYPT PASSWORD MENGGUNAKAN BCRYPT --
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(plainPassword, saltRounds);
 
     // File Upload: Pas Foto
-    const pasFoto = formData.get('pas_foto');
     let fotoName = null;
     if (pasFoto instanceof File && pasFoto.size > 0) {
       const stored = await storeFileUpload({
@@ -52,7 +61,6 @@ export async function POST(req) {
     }
 
     // File Upload: Surat Tugas
-    const suratTugas = formData.get('surat_tugas');
     let stName = null;
     if (suratTugas instanceof File && suratTugas.size > 0) {
       const stored = await storeFileUpload({
