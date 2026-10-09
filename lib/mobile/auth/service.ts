@@ -109,9 +109,9 @@ export async function rotateMobileRefreshToken(
       refreshToken: nextRefreshToken,
       user: toMobileUser(user),
     };
-  } catch {
+  } catch (error) {
     await connection.rollback();
-    throw new Error("Unable to refresh the mobile session");
+    throw error;
   } finally {
     connection.release();
   }
