@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useSession, signOut } from "next-auth/react";
 
-export const dynamic = "force-dynamic";
-
 interface ChatMessage {
   role: string;
   text: string;
@@ -15,11 +13,8 @@ interface ChatMessage {
 // HELPER: BADGE JENIS PENGUMUMAN
 // ==========================================
 const renderJenisBadge = (jenis?: string) => {
-  // 1. Amankan string: ubah ke huruf besar semua (uppercase) dan hapus spasi berlebih
   const j = (jenis || '').trim().toUpperCase();
   
-  // 2. Deteksi kategori Produk / Informasi
-  // Meng-cover: "PRODUK_INFORMASI", "Pengumuman Produk / Informasi"
   if (j.includes('PRODUK') || j.includes('INFORMASI')) {
     return (
       <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-blue-100 text-blue-700">
@@ -27,9 +22,6 @@ const renderJenisBadge = (jenis?: string) => {
       </span>
     );
   } 
-  
-  // 3. Deteksi kategori Umum
-  // Meng-cover: "UMUM", "Pengumuman Umum"
   else if (j.includes('UMUM')) {
     return (
       <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-green-100 text-green-700">
@@ -37,9 +29,6 @@ const renderJenisBadge = (jenis?: string) => {
       </span>
     );
   } 
-  
-  // 4. Deteksi kategori Pribadi
-  // Meng-cover: "Pengumuman Pribadi", "Balasan Laporan Pegawai", atau tipe custom lainnya ke spesifik NIK
   else if (j.includes('PRIBADI') || j.includes('BALASAN')) {
     return (
       <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-purple-100 text-purple-700">
@@ -48,7 +37,6 @@ const renderJenisBadge = (jenis?: string) => {
     );
   }
   
-  // 5. Fallback Default (Jika ada tipe string baru di database yang tidak masuk kondisi di atas)
   return (
     <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-gray-100 text-gray-700">
       📢 Informasi
@@ -76,6 +64,12 @@ function QnaView() {
   const [isAgentTyping, setIsAgentTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Dipindahkan ke atas sebelum useEffect untuk menghindari TDZ error
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const forceSaveMessages = async (currentMessages: any[]) => {
     if (currentMessages.length <= 1) return;
@@ -111,11 +105,6 @@ function QnaView() {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
-
-  const messagesRef = useRef(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   const fetchQna = async () => {
     try {
@@ -414,7 +403,6 @@ function PengumumanKategoriView({
       setIsLoading(true);
       try {
         if (kategoriFilter === 'UMUM' || kategoriFilter === 'PRODUK_INFORMASI') {
-          // Sumber 1: Tabel 'pengumuman' (Broadcast Global)
           const queryTarget = isNonFronting ? 'ALL_NON_FRONTING' : 'ALL_FRONTING';
           const res = await fetch(`/api/pegawai/pengumuman?target=${queryTarget}`);
           
@@ -443,16 +431,13 @@ function PengumumanKategoriView({
             setListData(fetchedData as never[]);
           }
         } else if (kategoriFilter === 'PRIBADI') {
-          // Sumber 2: Tabel 'pesan_notifikasi' (Pesan Personal / NIK Pegawai)
           const filteredPribadi = notifikasiList.filter(notif => {
             const penerima = (notif.penerima_nik || '').toUpperCase();
             const jenis = (notif.jenis_pengumuman || notif.tipe_pesan || '').toUpperCase();
 
-            // Abaikan pesan broadcast global
             const isBroadcast = penerima.includes('ALL') || penerima === 'ALL_FRONTING' || penerima === 'ALL_NON_FRONTING';
             if (isBroadcast) return false;
 
-            // Cocokkan dengan NIK user atau tipe pesan pribadi/balasan
             const isForUser = userNik ? penerima === userNik.toUpperCase() : true;
             const isPribadiType = jenis.includes('PRIBADI') || jenis.includes('BALASAN');
 
@@ -597,11 +582,9 @@ function PegawaiDashboardContent() {
     try {
       const formData = new FormData();
       
-      // 1. Set pengirimRole hanya menggunakan nama/username pegawai (tanpa embel-embel)
       const namaPegawai = profile?.nama || session?.user?.name;
       formData.append('pengirimRole', namaPegawai); 
       
-      // 2. Tentukan tujuan balasan (nikTujuan) antara HRD atau MO berdasarkan pengirim asli
       const rolePengirimAwal = (selectedPengumuman?.pengirim_role || '').toUpperCase();
       const targetDivisi = rolePengirimAwal.includes('HRD') ? 'HRD' : 'MO';
       formData.append('nikTujuan', targetDivisi); 
@@ -613,7 +596,6 @@ function PegawaiDashboardContent() {
         formData.append('file_lampiran', replyFile);
       }
 
-      // Memanfaatkan endpoint route.ts kirim-pesan yang sudah ada
       const res = await fetch('/api/kirim-pesan', {
         method: 'POST',
         body: formData,
@@ -674,79 +656,216 @@ function PegawaiDashboardContent() {
   const [sudahMasuk, setSudahMasuk] = useState(false);
   const [sudahPulang, setSudahPulang] = useState(false);
 
-  useEffect(() => {
-    const cekStatusAbsen = async () => {
-      const targetNik = profile?.nik || session?.user?.name;
-      if (!targetNik) return;
+  // --- STATE ABSENSI FOTO & LOKASI ---
+  const [showAbsenModal, setShowAbsenModal] = useState(false);
+  const [absenType, setAbsenType] = useState<"Masuk" | "Pulang">("Masuk");
+  const [absenPhoto, setAbsenPhoto] = useState<File | null>(null);
+  const [absenPhotoPreview, setAbsenPhotoPreview] = useState<string | null>(null);
+  const [absenLocation, setAbsenLocation] = useState({ lat: 0, lng: 0, address: "" });
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSubmittingAbsen, setIsSubmittingAbsen] = useState(false);
 
-      try {
-        const res = await fetch(`/api/pegawai/cek-absen?nik=${targetNik}`);
-        const result = await res.json();
-        if (result.success) {
-          setSudahMasuk(result.sudahMasuk);
-          setSudahPulang(result.sudahPulang);
-        }
-      } catch (e) {
-        console.error("Gagal mengecek status absen", e);
-      }
-    };
+  // --- STATE & REF UNTUK LIVE CAMERA ---
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
-    if (profile) cekStatusAbsen();
-  }, [profile, session]);
-
-  const handleAbsenMasuk = async () => {
-    if (!confirm("Apakah Anda yakin ingin melakukan absen masuk sekarang?")) return;
+  const cekStatusAbsen = async () => {
+    const targetNik = profile?.nik || session?.user?.name;
+    if (!targetNik) return;
 
     try {
-      const res = await fetch('/api/pegawai/absen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nik: profile?.nik,
-          nama: profile?.nama,
-          unit_kerja: profile?.unit_kerja || 'FRONTING',
-          jenis_absen: 'Masuk',
-          lokasi: 'Kantor / Lapangan'
-        })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        alert("✅ " + data.message);
-        setSudahMasuk(true);
-      } else {
-        alert("⚠️ " + data.message);
+      const res = await fetch(`/api/pegawai/cek-absen?nik=${targetNik}`);
+      const result = await res.json();
+      if (result.success) {
+        setSudahMasuk(result.sudahMasuk);
+        setSudahPulang(result.sudahPulang);
       }
-    } catch (error) {
-      alert("❌ Terjadi kesalahan jaringan.");
+    } catch (e) {
+      console.error("Gagal mengecek status absen", e);
     }
   };
 
-  const handleAbsenPulang = async () => {
-    if (!confirm("Apakah Anda yakin ingin melakukan absen pulang sekarang?")) return;
+  useEffect(() => {
+    if (profile) cekStatusAbsen();
+  }, [profile, session]);
 
+  // Fungsi menyalakan kamera
+  const startCamera = async () => {
     try {
-      const res = await fetch('/api/pegawai/absen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nik: profile?.nik,
-          nama: profile?.nama,
-          unit_kerja: profile?.unit_kerja || 'FRONTING',
-          jenis_absen: 'Pulang',
-          lokasi: 'Kantor / Lapangan'
-        })
+      setIsCameraOpen(true);
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" } 
       });
-
-      const data = await res.json();
-      if (data.success) {
-        alert("✅ " + data.message);
-        setSudahPulang(true);
-      } else {
-        alert("⚠️ " + data.message);
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
       }
     } catch (error) {
-      alert("❌ Terjadi kesalahan jaringan.");
+      console.error("Error accessing camera:", error);
+      alert("Kamera tidak dapat diakses. Pastikan Anda memberikan izin akses kamera pada browser.");
+      setIsCameraOpen(false);
+    }
+  };
+
+  // Fungsi mematikan kamera
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const context = canvasRef.current.getContext('2d');
+      if (context) {
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        
+        context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+        canvasRef.current.toBlob((blob) => {
+          if (blob) {
+            const fileName = `absen_${profile?.nik || 'user'}_${Date.now()}.jpg`;
+            const photoFile = new File([blob], fileName, { type: "image/jpeg" });
+
+            setAbsenPhoto(photoFile);
+            setAbsenPhotoPreview(URL.createObjectURL(photoFile));
+            
+            stopCamera();
+          } else {
+            alert("Gagal memproses gambar dari kamera.");
+          }
+        }, 'image/jpeg', 0.8);
+      }
+    }
+  };
+
+  const handleCloseModal = () => {
+    stopCamera();
+    setShowAbsenModal(false);
+  };
+
+  const getGeoLocation = () => {
+    setIsLocating(true);
+
+    if (!navigator.geolocation) {
+      alert("Browser Anda tidak mendukung Geolocation.");
+      setIsLocating(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+          );
+          const data = await res.json();
+          setAbsenLocation({
+            lat,
+            lng,
+            address: data.display_name || "Alamat tidak ditemukan"
+          });
+        } catch (e) {
+          setAbsenLocation({
+            lat,
+            lng,
+            address: `Koordinat: ${lat}, ${lng} (Gagal mengambil teks alamat)`
+          });
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Silakan izinkan akses lokasi pada browser Anda untuk absensi.");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("Informasi lokasi tidak dapat ditemukan.");
+            break;
+          case error.TIMEOUT:
+            alert("Waktu permintaan lokasi telah habis.");
+            break;
+          default:
+            alert("Terjadi kesalahan saat mengambil lokasi.");
+        }
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  const handleAbsenMasuk = () => {
+    setAbsenType("Masuk");
+    setAbsenPhoto(null);
+    setAbsenPhotoPreview(null);
+    setShowAbsenModal(true);
+    getGeoLocation();
+  };
+
+  const handleAbsenPulang = () => {
+    setAbsenType("Pulang");
+    setAbsenPhoto(null);
+    setAbsenPhotoPreview(null);
+    setShowAbsenModal(true);
+    getGeoLocation();
+  };
+
+  // Submisi Absen Realtime (Perbaikan loading & Modal Close)
+  const submitAbsenRealtime = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!absenPhoto) {
+      alert("⚠️ Foto absensi wajib diambil terlebih dahulu!");
+      return;
+    }
+
+    if (!profile?.nik) {
+      alert("⚠️ Data profil NIK tidak ditemukan. Silakan muat ulang halaman.");
+      return;
+    }
+
+    setIsSubmittingAbsen(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('nik', profile.nik);
+      formData.append('nama', profile?.nama || '');
+      formData.append('unit_kerja', profile?.unit_kerja || '');
+      formData.append('jenis_absen', absenType);
+      formData.append('latitude', absenLocation?.lat ? absenLocation.lat.toString() : '');
+      formData.append('longitude', absenLocation?.lng ? absenLocation.lng.toString() : '');
+      formData.append('lokasi_alamat', absenLocation?.address || 'Lokasi tidak diketahui');
+      formData.append('foto_absen', absenPhoto, `absen_${profile.nik}_${Date.now()}.jpg`);
+
+      const response = await fetch('/api/pegawai/absen', {
+        method: 'POST',
+        body: formData, 
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`✅ ${result.message}`);
+        handleCloseModal();
+        await cekStatusAbsen(); // Refresh status tombol absen
+      } else {
+        alert(`❌ Gagal: ${result.error || result.message}`);
+      }
+
+    } catch (error) {
+      console.error("Error submitting absen:", error);
+      alert("❌ Terjadi kesalahan jaringan saat mengirim data absensi.");
+    } finally {
+      setIsSubmittingAbsen(false);
     }
   };
 
@@ -844,29 +963,22 @@ function PegawaiDashboardContent() {
   }, [profile, session]);
 
   const handleReadNotif = (notif: any) => {
-    // 1. Tandai notifikasi sebagai terbaca di state lokal
     setNotifikasi(notifikasi.map(n => n.id === notif.id ? { ...n, is_read: 1 } : n));
-    
-    // 2. Set data pengumuman yang dipilih untuk ditampilkan di layar utama
     setSelectedPengumuman(notif);
     
-    // 3. Ambil jenis string dan ubah ke uppercase (agar kebal huruf besar/kecil)
     const jenis = (notif.jenis_pengumuman || notif.tipe_pesan || '').toUpperCase();
 
-    // 4. Deteksi dan arahkan ke submenu yang tepat secara akurat
     if (jenis.includes('PRODUK') || jenis.includes('INFORMASI')) {
       setCurrentView('pengumuman-produk');
     } else if (jenis.includes('PRIBADI') || jenis.includes('BALASAN')) {
       setCurrentView('pengumuman-pribadi');
     } else {
-      setCurrentView('pengumuman-umum'); // Default fallback jika tipe tidak spesifik
+      setCurrentView('pengumuman-umum'); 
     }
 
-    // 5. Buka dropdown menu pengumuman di sidebar dan tutup popup lonceng
     setIsPengumumanOpen(true);
     setShowNotif(false);
 
-    // 6. Update status is_read ke database di background
     fetch('/api/notifikasi/read', {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -1016,7 +1128,7 @@ function PegawaiDashboardContent() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className="flex-1 p-8 overflow-y-auto relative">
         <div className="mb-8 border-b pb-4 flex justify-between items-center relative z-20">
           <h1 className="text-2xl font-bold text-gray-800 uppercase">
             {currentView === 'dashboard' && 'Dashboard Utama Pegawai'}
@@ -1067,7 +1179,6 @@ function PegawaiDashboardContent() {
             <span className="text-sm text-gray-600 border-l border-gray-300 pl-6">
               Login sebagai: <b className="text-indigo-600">{profile?.nama || session?.user?.name}</b>
             </span>
-
           </div>
         </div>
 
@@ -1539,7 +1650,7 @@ function PegawaiDashboardContent() {
                     </div>
                   )}
 
-                  {/* FORM BALASAN KHUSUS SURAT PERINTAH TUGAS (HANYA MUNCUL DI MENU PRIBADI) */}
+                  {/* FORM BALASAN KHUSUS SURAT PERINTAH TUGAS */}
                   {currentView === 'pengumuman-pribadi' && selectedPengumuman.tipe_pesan?.toLowerCase().includes('surat perintah tugas') && (
                     <div className="mt-8 border-t border-gray-200 pt-6">
                       <div className="flex items-center gap-2 mb-4">
@@ -1670,6 +1781,109 @@ function PegawaiDashboardContent() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* --- MODAL ABSENSI REALTIME --- */}
+        {showAbsenModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+              <div className={`p-4 text-white font-bold flex justify-between items-center ${absenType === 'Masuk' ? 'bg-indigo-600' : 'bg-emerald-600'}`}>
+                <h3 className="text-lg">📸 Konfirmasi Absen {absenType}</h3>
+                <button onClick={handleCloseModal} className="text-white hover:text-gray-200 text-xl">✕</button>
+              </div>
+
+              <form onSubmit={submitAbsenRealtime} className="p-6 space-y-5">
+                {/* Bagian Lokasi */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <p className="text-xs text-gray-500 font-bold mb-2 uppercase">📍 Lokasi Saat Ini</p>
+                  {isLocating ? (
+                    <div className="flex items-center gap-2 text-sm text-blue-600">
+                      <span className="animate-spin text-xl">⏳</span> Sedang mencari sinyal GPS...
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-gray-800">
+                      <p>{absenLocation.address || "Alamat tidak ditemukan"}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Lat: {absenLocation.lat} | Lng: {absenLocation.lng}
+                      </p>
+                    </div>
+                  )}
+                  <button 
+                    type="button" 
+                    onClick={getGeoLocation} 
+                    className="mt-3 text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-100 transition"
+                  >
+                    🔄 Refresh Lokasi
+                  </button>
+                </div>
+
+                {/* Bagian Foto dengan Live Camera */}
+                <div>
+                  <p className="text-xs text-gray-500 font-bold mb-2 uppercase">📸 Foto Selfie Absen</p>
+                  
+                  {absenPhotoPreview ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-300">
+                      <img src={absenPhotoPreview} alt="Preview Absen" className="w-full h-48 object-cover" />
+                      <button 
+                        type="button"
+                        onClick={() => { setAbsenPhoto(null); setAbsenPhotoPreview(null); }}
+                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-md font-bold shadow transition-colors"
+                      >
+                        🗑️ Hapus & Ulangi
+                      </button>
+                    </div>
+                  ) : isCameraOpen ? (
+                    <div className="relative rounded-xl overflow-hidden border-2 border-indigo-300 bg-black flex flex-col items-center">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        className="w-full h-48 object-cover transform scale-x-[-1]" 
+                      ></video>
+                      
+                      <div className="absolute bottom-2 flex gap-2 w-full px-4 justify-center">
+                        <button 
+                          type="button"
+                          onClick={stopCamera}
+                          className="bg-red-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow hover:bg-red-600 flex-1"
+                        >
+                          Batal
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={capturePhoto}
+                          className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-lg shadow hover:bg-indigo-700 flex items-center justify-center gap-1 flex-1"
+                        >
+                          📸 Jepret Foto
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button"
+                      onClick={startCamera}
+                      className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 transition group"
+                    >
+                      <span className="text-4xl mb-2 group-hover:scale-110 transition-transform">🤳</span>
+                      <span className="text-sm font-semibold text-gray-600 group-hover:text-indigo-600">Ketuk untuk Buka Kamera</span>
+                    </button>
+                  )}
+
+                  <canvas ref={canvasRef} className="hidden"></canvas>
+                </div>
+
+                <div className="pt-2">
+                  <button 
+                    type="submit" 
+                    disabled={isLocating || !absenPhoto || isSubmittingAbsen}
+                    className={`w-full text-white font-bold py-3 px-4 rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${absenType === 'Masuk' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  >
+                    {isSubmittingAbsen ? 'Memproses...' : `Kirim Absen ${absenType} Sekarang ➤`}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
