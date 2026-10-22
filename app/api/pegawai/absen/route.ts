@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 import { cleanupStoredUploads, storeImageDataUrl, type StoredUpload } from "@/lib/uploads";
 
+// Helper untuk mengambil Tanggal (YYYY-MM-DD) dan Waktu (HH:mm:ss) GMT+7 (WIB)
+const getWIBDateTime = () => {
+  const now = new Date();
+  const tanggal = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }); // Format YYYY-MM-DD
+  const waktu = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Jakarta", hour12: false }); // Format HH:mm:ss
+  return { tanggal, waktu };
+};
+
 export async function POST(req: Request) {
   let upload: StoredUpload | undefined;
   let safeToCleanup = true;
@@ -26,6 +34,8 @@ export async function POST(req: Request) {
     if (!foto_absen) {
       return NextResponse.json({ success: false, error: 'Foto absensi wajib dilampirkan.' }, { status: 400 });
     }
+
+    const { tanggal: tanggalWIB, waktu: waktuWIB } = getWIBDateTime();
 
     // 2. Konversi foto (File / Blob / Base64 String) ke Data URL Base64
     let urlFile = "";
@@ -100,8 +110,8 @@ export async function POST(req: Request) {
 
       // B. Cek status absensi hari ini
       const [existingAbsen] = await connection.query(
-        `SELECT id, waktu_keluar FROM absensi WHERE nik = ? AND tanggal = CURDATE() LIMIT 1`,
-        [nik]
+        `SELECT id, waktu_keluar FROM absensi WHERE nik = ? AND tanggal = ? LIMIT 1`,
+        [nik, tanggalWIB]
       ) as [any[], any];
 
       if (jenis_absen === 'Masuk') {
@@ -113,8 +123,8 @@ export async function POST(req: Request) {
 
         await connection.query(
           `INSERT INTO absensi (nik, nama, unit_kerja, nama_supervisor, tanggal, waktu_masuk, waktu_keluar, lokasi, status, foto_masuk)
-           VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), NULL, ?, 'HADIR', ?)`,
-          [nik, nama, unit_kerja, namaSupervisor, lokasiGabungan, fotoReference]
+           VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 'HADIR', ?)`,
+          [nik, nama, unit_kerja, namaSupervisor, tanggalWIB, waktuWIB, lokasiGabungan, fotoReference]
         );
 
       } else if (jenis_absen === 'Pulang') {
@@ -132,9 +142,9 @@ export async function POST(req: Request) {
 
         await connection.query(
           `UPDATE absensi 
-           SET waktu_keluar = CURTIME(), foto_keluar = ? 
+           SET waktu_keluar = ?, foto_keluar = ? 
            WHERE id = ?`,
-          [fotoReference, existingAbsen[0].id]
+          [waktuWIB, fotoReference, existingAbsen[0].id]
         );
       }
 
