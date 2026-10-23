@@ -24,11 +24,18 @@ export async function GET(request: Request) {
   const employee = await currentEmployee(request);
   if (!employee) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   try {
+    const tanggal = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
     const [rows] = await pool.query<AttendanceRow[]>(
-      "SELECT waktu_masuk, waktu_keluar FROM absensi WHERE nik = ? AND tanggal = CURDATE() LIMIT 1",
-      [employee.nik],
+      "SELECT waktu_masuk, waktu_keluar FROM absensi WHERE nik = ? AND tanggal = ? LIMIT 1",
+      [employee.nik, tanggal],
     );
-    return NextResponse.json({ sudahMasuk: Boolean(rows[0]?.waktu_masuk), sudahPulang: Boolean(rows[0]?.waktu_keluar) });
+    return NextResponse.json({
+      tanggal,
+      waktuMasuk: rows[0]?.waktu_masuk ?? null,
+      waktuPulang: rows[0]?.waktu_keluar ?? null,
+      sudahMasuk: Boolean(rows[0]?.waktu_masuk),
+      sudahPulang: Boolean(rows[0]?.waktu_keluar),
+    });
   } catch {
     return NextResponse.json({ message: "Unable to load attendance" }, { status: 500 });
   }
@@ -37,23 +44,44 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const employee = await currentEmployee(request);
   if (!employee) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ message: "Invalid request" }, { status: 400 });
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.json({ message: "Gunakan multipart/form-data" }, { status: 400 });
   }
-  if (!body || typeof body !== "object" || !("jenis_absen" in body) ||
-      (body.jenis_absen !== "Masuk" && body.jenis_absen !== "Pulang")) {
+
+  const kind = form.get("jenis_absen");
+  if (kind !== "Masuk" && kind !== "Pulang") {
     return NextResponse.json({ message: "Jenis absensi tidak valid" }, { status: 400 });
   }
-  return recordAttendance(new Request(request.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      nik: employee.nik,
-      nama: employee.nama,
-      unit_kerja: employee.unit_kerja,
-      lokasi: "Kantor / Lapangan",
-      jenis_absen: body.jenis_absen,
-    }),
-  }));
+
+  const photo = form.get("foto_absen");
+  if (!(photo instanceof File) || !photo.size || !photo.type.startsWith("image/")) {
+    return NextResponse.json({ message: "Foto absensi wajib berupa gambar" }, { status: 400 });
+  }
+
+  const latitude = form.get("latitude");
+  const longitude = form.get("longitude");
+  const address = form.get("lokasi_alamat");
+  const validLocation = typeof latitude === "string" && latitude.trim() !== "" &&
+    Number.isFinite(Number(latitude)) && Math.abs(Number(latitude)) <= 90 &&
+    typeof longitude === "string" && longitude.trim() !== "" &&
+    Number.isFinite(Number(longitude)) && Math.abs(Number(longitude)) <= 180 &&
+    typeof address === "string" && address.trim() !== "";
+  if (!validLocation) {
+    return NextResponse.json({ message: "Lokasi absensi tidak valid" }, { status: 400 });
+  }
+
+  form.set("nik", employee.nik);
+  form.set("nama", employee.nama);
+  form.set("unit_kerja", employee.unit_kerja);
+
+  const response = await recordAttendance(new Request(request.url, { method: "POST", body: form }));
+  const result: unknown = await response.json();
+  if (result && typeof result === "object" && "error" in result && typeof result.error === "string") {
+    return NextResponse.json({ success: false, message: result.error }, { status: response.status });
+  }
+
+  return NextResponse.json(result, { status: response.status });
 }

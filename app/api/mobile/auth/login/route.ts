@@ -20,7 +20,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(session, { status: 200 });
-  } catch {
+  } catch (error) {
+    console.error("Unable to sign in mobile user", error);
     return NextResponse.json({ message: "Unable to sign in" }, { status: 500 });
   }
 }

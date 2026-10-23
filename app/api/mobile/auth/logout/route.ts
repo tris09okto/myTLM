@@ -14,7 +14,8 @@ export async function POST(request: Request) {
     }
 
     return new NextResponse(null, { status: 204 });
-  } catch {
+  } catch (error) {
+    console.error("Unable to sign out mobile user", error);
     return NextResponse.json({ message: "Unable to sign out" }, { status: 500 });
   }
 }
