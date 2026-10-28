@@ -48,6 +48,9 @@ async function tambahEstimasiGaji(connection: any, idPegawai: number, periode: s
   }
 }
 
+// Batas maksimum ukuran file: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10.485.760 bytes
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -57,6 +60,16 @@ export async function POST(request: Request) {
 
     if (!file) return NextResponse.json({ success: false, message: 'File tidak ditemukan' }, { status: 400 });
 
+    // ====================================================================
+    // VALIDASI UKURAN FILE (MAKSIMUM 10MB)
+    // ====================================================================
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { success: false, message: 'Ukuran file melebihi batas maksimum 10MB' },
+        { status: 400 }
+      );
+    }
+    
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
