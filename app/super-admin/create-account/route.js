@@ -40,7 +40,7 @@ export async function POST(req) {
     
     const password = rawPassword ? await bcrypt.hash(rawPassword, 10) : "";
 
-    // Tangkap SEMUA file Surat Tugas (Filter file yang benar-benar ada namanya)
+    // 1. Tangkap file Surat Tugas -> Simpan di folder "surat_tugas"
     const stFiles = formData.getAll("st_file");
     const savedStFileNames = [];
 
@@ -48,8 +48,9 @@ export async function POST(req) {
     for (const file of validStFiles) {
       const stored = await storeFileUpload({
         file,
-        folder: "",
+        folder: "surat_tugas", // <-- Disimpan ke folder uploads/surat_tugas
         localFileName: `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`,
+        resourceType: "raw",   // Opsional: Resource type raw untuk PDF / dokumen
       });
       uploads.push(stored);
       savedStFileNames.push(stored.reference);
@@ -57,14 +58,15 @@ export async function POST(req) {
 
     const stFileString = savedStFileNames.join(",");
 
-    // Tangkap file ID Card
+    // 2. Tangkap file ID Card -> Simpan di folder "pas_foto"
     const idCardFile = formData.get("idcard_file");
     let idCardName = "";
     if (idCardFile instanceof File && idCardFile.name && idCardFile.size > 0) {
       const stored = await storeFileUpload({
         file: idCardFile,
-        folder: "",
+        folder: "pas_foto",   // <-- Disimpan ke folder uploads/pas_foto
         localFileName: `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`,
+        resourceType: "image", // Opsional: Resource type image untuk foto
       });
       uploads.push(stored);
       idCardName = stored.reference;
@@ -75,13 +77,13 @@ export async function POST(req) {
     await connection.beginTransaction();
     transactionStarted = true;
 
-    // 2. Insert ke tabel `users` (Default jabatan: 'fronting', role: 'pegawai')
+    // Insert ke tabel `users` (Default jabatan: 'fronting', role: 'pegawai')
     await connection.query(
       `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'fronting', 'pegawai')`,
       [username, password]
     );
 
-    // 3. Insert ke tabel `master_pegawai`
+    // Insert ke tabel `master_pegawai`
     await connection.query(
       `INSERT INTO master_pegawai 
       (nama, nik, kanwil, area, penempatan, leader, email, nowa, idcard_file, st_file, nama_bank, norek, jenis_pegawai, username, password) 
@@ -94,8 +96,8 @@ export async function POST(req) {
     committed = true;
 
     await transporter.sendMail({
-      from: `"Admin Sistem" <${process.env.EMAIL_FROM}>`, // noreply@perusahaan.com
-      to: email, // Email pegawai
+      from: `"Admin Sistem" <${process.env.EMAIL_FROM}>`,
+      to: email,
       subject: "Akun Fronting Baru Anda",
       html: `
         <h3>Halo, ${nama}!</h3>
@@ -125,7 +127,6 @@ export async function POST(req) {
     console.error("Gagal membuat akun:", error);
     return NextResponse.json({ success: false, message: "Terjadi kesalahan server: " + error.message }, { status: 500 });
   } finally {
-    // Wajib lepaskan koneksi kembali ke pool
     if (connection) connection.release();
   }
 }

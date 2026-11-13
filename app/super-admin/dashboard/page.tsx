@@ -7,6 +7,16 @@ import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
 
+interface SearchableSelectProps {
+  name?: string;
+  options?: any[];
+  value?: string;
+  onChange: (val: any) => void;
+  placeholder?: string;
+  required?: boolean;
+  disabled?: boolean;
+}
+
 function SearchableSelect({
   name,
   options,
@@ -15,14 +25,17 @@ function SearchableSelect({
   placeholder,
   required,
   disabled,
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const wrapperRef = useRef(null);
+}: SearchableSelectProps) {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
         setSearchTerm("");
       }
@@ -31,8 +44,8 @@ function SearchableSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredOptions = (options || []).filter((opt) =>
-    String(opt).toLowerCase().includes(searchTerm.toLowerCase()),
+  const filteredOptions = (options || []).filter((opt: any) =>
+    String(opt).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -53,7 +66,7 @@ function SearchableSelect({
           placeholder={placeholder}
           value={isOpen ? searchTerm : value || ""}
           disabled={disabled}
-          onChange={(e) => {
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
             setSearchTerm(e.target.value);
             onChange("");
             setIsOpen(true);
@@ -75,7 +88,7 @@ function SearchableSelect({
       {isOpen && !disabled && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
           {filteredOptions.length > 0 ? (
-            filteredOptions.map((opt, idx) => (
+            filteredOptions.map((opt: any, idx: number) => (
               <div
                 key={idx}
                 className="p-2 cursor-pointer hover:bg-blue-100 text-gray-900 text-sm border-b border-gray-50 last:border-0"
@@ -103,15 +116,14 @@ function SearchableSelect({
 // 1. KOMPONEN: CREATE LEADER VIEW
 // ==========================================
 function CreateLeaderView() {
-  const [leaders, setLeaders] = useState([]);
-  const [allLeaders, setAllLeaders] = useState([]);
+  const [leaders, setLeaders] = useState<any[]>([]);
+  const [allLeaders, setAllLeaders] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingLeaderId, setEditingLeaderId] = useState(null);
-  const [wilayahData, setWilayahData] = useState([]);
-
+  const [editingLeaderId, setEditingLeaderId] = useState<any>(null);
+  const [wilayahData, setWilayahData] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     namaLeader: "",
     kanwil: [],
     area: [],
@@ -119,19 +131,18 @@ function CreateLeaderView() {
     email: "",
     username: "",
     password: "",
-    idcard_base64: "", // <-- Tambahkan ini
-    idcard_name: "", // <-- Tambahkan ini
+    idcard_base64: "",
+    idcard_name: "",
   });
 
-  // State baru untuk ID Card
-  const [idCardFile, setIdCardFile] = useState(null);
+  const [idCardFile, setIdCardFile] = useState<File | null>(null);
   const [idCardName, setIdCardName] = useState("");
   const [existingIdCard, setExistingIdCard] = useState("");
 
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectStyles = {
-    control: (provided) => ({
+    control: (provided: any) => ({
       ...provided,
       backgroundColor: "#ffffff",
       borderColor: "#d1d5db",
@@ -140,29 +151,29 @@ function CreateLeaderView() {
       boxShadow: "none",
       "&:hover": { borderColor: "#9ca3af" },
     }),
-    input: (provided) => ({ ...provided, color: "#111827" }),
-    option: (provided, state) => ({
+    input: (provided: any) => ({ ...provided, color: "#111827" }),
+    option: (provided: any, state: any) => ({
       ...provided,
       color: "#111827",
       backgroundColor: state.isFocused ? "#eff6ff" : "#ffffff",
     }),
-    singleValue: (provided) => ({ ...provided, color: "#111827" }),
-    multiValue: (provided) => ({
+    singleValue: (provided: any) => ({ ...provided, color: "#111827" }),
+    multiValue: (provided: any) => ({
       ...provided,
       backgroundColor: "#eff6ff",
       borderRadius: "4px",
     }),
-    multiValueLabel: (provided) => ({
+    multiValueLabel: (provided: any) => ({
       ...provided,
       color: "#1d4ed8",
       fontWeight: "500",
     }),
-    multiValueRemove: (provided) => ({
+    multiValueRemove: (provided: any) => ({
       ...provided,
       color: "#1d4ed8",
       ":hover": { backgroundColor: "#dbeafe", color: "#1e40af" },
     }),
-    menuList: (provided) => ({
+    menuList: (provided: any) => ({
       ...provided,
       maxHeight: "180px",
     }),
@@ -185,7 +196,7 @@ function CreateLeaderView() {
     }
   };
 
-  const handleIdCardChange = (e) => {
+  const handleIdCardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
@@ -208,7 +219,6 @@ function CreateLeaderView() {
         const listData = Array.isArray(data) ? data : [];
         setAllLeaders(listData);
 
-        // Filter data secara lokal berdasarkan nama leader, username, atau email jika ada keyword pencarian
         if (keyword) {
           const lowerKey = keyword.toLowerCase();
           const filtered = listData.filter(
@@ -217,7 +227,7 @@ function CreateLeaderView() {
                 item.nama_leader.toLowerCase().includes(lowerKey)) ||
               (item.username &&
                 item.username.toLowerCase().includes(lowerKey)) ||
-              (item.email && item.email.toLowerCase().includes(lowerKey)),
+              (item.email && item.email.toLowerCase().includes(lowerKey))
           );
           setLeaders(filtered);
         } else {
@@ -232,31 +242,19 @@ function CreateLeaderView() {
   useEffect(() => {
     fetchLeaders();
     fetchWilayahOptions();
-  }, []); // <--- GUNAKAN ARRAY KOSONG AGAR HANYA DIJALANKAN SEKALI SAAT DIMUAT
-
-  /*useEffect(() => {
-    // Tambahkan 'upload-fee' agar data frontline ditarik saat menu ini dibuka
-    if (currentView === 'list-akun' || currentView === 'penutupan-akun' || currentView === 'upload-fee') {
-      fetchFrontlineData();
-    }
-    // Tambahkan 'upload-fee' agar data wilayah ditarik saat menu ini dibuka
-    if (currentView === 'form-tambah' || currentView === 'form-edit' || currentView === 'upload-fee') {
-      fetchWilayahData();
-      fetchLeadersData();
-    }
-  }, [currentView]);*/
+  }, []);
 
   const kanwilOptions = Array.from(
-    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean)),
+    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean))
   ).map((k) => ({ label: String(k), value: String(k) }));
 
   const filteredAreasData =
     formData.kanwil.length > 0
-      ? wilayahData.filter((item) => formData.kanwil.includes(item?.kanwil))
+      ? wilayahData.filter((item: any) => formData.kanwil.includes(item?.kanwil))
       : wilayahData;
 
   const areaOptions = Array.from(
-    new Set(filteredAreasData.map((item) => item?.area).filter(Boolean)),
+    new Set(filteredAreasData.map((item) => item?.area).filter(Boolean))
   ).map((a) => ({ label: String(a), value: String(a) }));
 
   const filteredPenempatanData =
@@ -266,8 +264,8 @@ function CreateLeaderView() {
 
   const penempatanOptions = Array.from(
     new Set(
-      filteredPenempatanData.map((item) => item?.penempatan).filter(Boolean),
-    ),
+      filteredPenempatanData.map((item) => item?.penempatan).filter(Boolean)
+    )
   ).map((p) => ({ label: String(p), value: String(p) }));
 
   const handleAddClick = () => {
@@ -280,9 +278,10 @@ function CreateLeaderView() {
       email: "",
       username: "",
       password: "",
+      idcard_base64: "",
+      idcard_name: "",
     });
 
-    // Reset file
     setIdCardFile(null);
     setIdCardName("");
     setExistingIdCard("");
@@ -290,8 +289,8 @@ function CreateLeaderView() {
     setIsModalOpen(true);
   };
 
-  const handleEditClick = (leader) => {
-    const parseJSON = (data) => {
+  const handleEditClick = (leader: any) => {
+    const parseJSON = (data: any) => {
       try {
         return typeof data === "string"
           ? JSON.parse(data)
@@ -314,7 +313,6 @@ function CreateLeaderView() {
       password: "",
     });
 
-    // Set ID Card existing
     setIdCardFile(null);
     setIdCardName("");
     setExistingIdCard(leader.idcard_file || "");
@@ -322,8 +320,7 @@ function CreateLeaderView() {
     setIsModalOpen(true);
   };
 
-  // Helper mengubah file gambar menjadi string teks Base64
-  const fileToBase64 = (file) =>
+  const fileToBase64 = (file: any) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -331,7 +328,7 @@ function CreateLeaderView() {
       reader.onerror = (error) => reject(error);
     });
 
-  const handleFormSubmit = async (e) => {
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (
       formData.kanwil.length === 0 ||
@@ -343,8 +340,7 @@ function CreateLeaderView() {
     }
 
     try {
-      // Gunakan Object Javascript biasa, bukan FormData
-      const payload = {
+      const payload: Record<string, any> = {
         namaLeader: formData.namaLeader,
         kanwil: formData.kanwil,
         area: formData.area,
@@ -356,7 +352,6 @@ function CreateLeaderView() {
 
       if (editingLeaderId) payload.id = editingLeaderId;
 
-      // Jika ada file ID Card, konversi ke Base64 lalu masukkan ke payload
       if (idCardFile) {
         payload.idcard_file = await fileToBase64(idCardFile);
       }
@@ -364,16 +359,16 @@ function CreateLeaderView() {
       const res = await fetch("/api/leaders", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json", // Wajib disertakan agar req.json() di backend terbaca
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload), // Kirim sebagai string JSON
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         alert(
           editingLeaderId
             ? "Data leader berhasil diperbarui!"
-            : "Data leader berhasil ditambahkan!",
+            : "Data leader berhasil ditambahkan!"
         );
         setIsModalOpen(false);
         setEditingLeaderId(null);
@@ -400,7 +395,7 @@ function CreateLeaderView() {
     }
   };
 
-  const handleExcelUpload = (e) => {
+  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -411,7 +406,7 @@ function CreateLeaderView() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        const formattedData = data.map((row) => ({
+        const formattedData = data.map((row: any) => ({
           namaLeader: row["Nama Leader"] ? String(row["Nama Leader"]) : "-",
           kanwil: row["Kanwil"]
             ? String(row["Kanwil"])
@@ -454,7 +449,7 @@ function CreateLeaderView() {
     reader.readAsBinaryString(file);
   };
 
-  const handleSearchChange = (e) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const keyword = e.target.value;
     setSearchQuery(keyword);
 
@@ -467,7 +462,7 @@ function CreateLeaderView() {
           (item.nama_leader &&
             item.nama_leader.toLowerCase().includes(lowerKey)) ||
           (item.username && item.username.toLowerCase().includes(lowerKey)) ||
-          (item.email && item.email.toLowerCase().includes(lowerKey)),
+          (item.email && item.email.toLowerCase().includes(lowerKey))
       );
       setLeaders(filtered);
     }
@@ -536,7 +531,7 @@ function CreateLeaderView() {
             {leaders.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-6 py-12 text-center text-gray-500"
                 >
                   Belum ada data leader.
@@ -544,7 +539,7 @@ function CreateLeaderView() {
               </tr>
             ) : (
               leaders.map((leader, index) => {
-                const parseJSON = (data) => {
+                const parseJSON = (data: any) => {
                   try {
                     return typeof data === "string"
                       ? JSON.parse(data)
@@ -578,7 +573,7 @@ function CreateLeaderView() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {kanwilArr?.map((k, i) => (
+                        {kanwilArr?.map((k: string, i: number) => (
                           <span
                             key={i}
                             className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-xs border border-purple-100"
@@ -590,7 +585,7 @@ function CreateLeaderView() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {areaArr?.map((a, i) => (
+                        {areaArr?.map((a: string, i: number) => (
                           <span
                             key={i}
                             className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs border border-blue-100"
@@ -602,7 +597,7 @@ function CreateLeaderView() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {penempatanArr?.map((p, i) => (
+                        {penempatanArr?.map((p: string, i: number) => (
                           <span
                             key={i}
                             className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md text-xs border border-amber-100"
@@ -630,9 +625,7 @@ function CreateLeaderView() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          {/* Kotak Modal dibuat max-h-[90vh] dan flex-col agar header tetap terkunci di atas */}
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto">
-            {/* Header (Tombol Close & Judul dijamin selalu terlihat di atas) */}
             <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
               <h2 className="text-lg font-bold text-gray-800">
                 {editingLeaderId ? "Edit Data Leader" : "Add Data Leader"}
@@ -641,19 +634,7 @@ function CreateLeaderView() {
                 onClick={() => setIsModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition-colors"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                ✕
               </button>
             </div>
             <form
@@ -687,13 +668,13 @@ function CreateLeaderView() {
                   styles={selectStyles}
                   placeholder="Pilih Kanwil..."
                   value={kanwilOptions.filter((opt) =>
-                    formData.kanwil.includes(opt.value),
+                    formData.kanwil.includes(opt.value)
                   )}
                   onChange={(selected) => {
                     setFormData({
                       ...formData,
                       kanwil: selected
-                        ? selected.map((item) => item.value)
+                        ? selected.map((item: any) => item.value)
                         : [],
                       area: [],
                       penempatan: [],
@@ -712,12 +693,12 @@ function CreateLeaderView() {
                   styles={selectStyles}
                   placeholder="Pilih Area..."
                   value={areaOptions.filter((opt) =>
-                    formData.area.includes(opt.value),
+                    formData.area.includes(opt.value)
                   )}
                   onChange={(selected) => {
                     setFormData({
                       ...formData,
-                      area: selected ? selected.map((item) => item.value) : [],
+                      area: selected ? selected.map((item: any) => item.value) : [],
                       penempatan: [],
                     });
                   }}
@@ -734,20 +715,19 @@ function CreateLeaderView() {
                   styles={selectStyles}
                   placeholder="Pilih Penempatan..."
                   value={penempatanOptions.filter((opt) =>
-                    formData.penempatan.includes(opt.value),
+                    formData.penempatan.includes(opt.value)
                   )}
                   onChange={(selected) =>
                     setFormData({
                       ...formData,
                       penempatan: selected
-                        ? selected.map((item) => item.value)
+                        ? selected.map((item: any) => item.value)
                         : [],
                     })
                   }
                 />
               </div>
 
-              {/* Input ID Card */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                   Upload ID Card (JPG/PNG)
@@ -775,7 +755,6 @@ function CreateLeaderView() {
                 )}
               </div>
 
-              {/* Input Email */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                   Alamat Email
@@ -792,7 +771,6 @@ function CreateLeaderView() {
                 />
               </div>
 
-              {/* Input Username */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                   Username Akun
@@ -810,7 +788,6 @@ function CreateLeaderView() {
                 />
               </div>
 
-              {/* Input Password */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                   Password Akun
@@ -861,13 +838,13 @@ function CreateLeaderView() {
 }
 
 // ==========================================
-// KOMPONEN: UPLOAD PRODUK & PROMO VIEW
+// 2. KOMPONEN: UPLOAD PRODUK & PROMO VIEW
 // ==========================================
 function UploadProdukView() {
-  const [dataList, setDataList] = useState([]);
+  const [dataList, setDataList] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     tipe: "PRODUK",
@@ -876,24 +853,20 @@ function UploadProdukView() {
     berlaku_sampai: "",
     status: "AKTIF",
   });
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageName, setImageName] = useState("");
   const [existingImage, setExistingImage] = useState("");
 
-  // 1. READ: Ambil Data dari Database
   const fetchData = async () => {
     try {
       const res = await fetch("/api/produk-promo/create");
       if (res.ok) {
         const result = await res.json();
-        // Cek struktur response (mendukung { success: true, data: [...] } atau array langsung)
         if (result.success !== undefined) {
           setDataList(Array.isArray(result.data) ? result.data : []);
         } else {
           setDataList(Array.isArray(result) ? result : []);
         }
-      } else {
-        console.error("Gagal menarik data dari server, status:", res.status);
       }
     } catch (error) {
       console.error("Error fetching produk/promo data:", error);
@@ -904,7 +877,7 @@ function UploadProdukView() {
     fetchData();
   }, []);
 
-  const handleOpenModal = (item = null) => {
+  const handleOpenModal = (item: any = null) => {
     if (item) {
       setEditingId(item.id);
       setFormData({
@@ -933,7 +906,7 @@ function UploadProdukView() {
     setIsModalOpen(true);
   };
 
-  const handleImageChange = (e) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
@@ -948,25 +921,24 @@ function UploadProdukView() {
     }
   };
 
-  // 2. CREATE & UPDATE: Submit Data ke Database
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     const submitData = new FormData();
-    Object.keys(formData).forEach((key) =>
-      submitData.append(key, formData[key]),
+    Object.entries(formData).forEach(([key, value]) =>
+      submitData.append(key, value)
     );
 
     if (editingId) submitData.append("id", editingId);
-    if (imageFile) submitData.append("gambar_file", imageFile); // File fisik untuk backend
+    if (imageFile) submitData.append("gambar_file", imageFile);
 
     try {
       const endpoint = editingId
         ? "/api/produk-promo/update"
         : "/api/produk-promo/create";
       const res = await fetch(endpoint, {
-        method: "POST", // Menggunakan POST agar kompatibel dengan FormData parsing (multer/formidable) di backend
+        method: "POST",
         body: submitData,
       });
 
@@ -976,10 +948,10 @@ function UploadProdukView() {
           alert(
             editingId
               ? "Data berhasil diperbarui!"
-              : "Data berhasil ditambahkan!",
+              : "Data berhasil ditambahkan!"
           );
           setIsModalOpen(false);
-          fetchData(); // Tarik data terbaru dari DB
+          fetchData();
         } else {
           alert(result.message || "Gagal menyimpan data ke database.");
         }
@@ -994,19 +966,18 @@ function UploadProdukView() {
     }
   };
 
-  // 3. DELETE: Hapus Data dari Database
-  const handleDelete = async (id, judul) => {
+  const handleDelete = async (id: string, judul: string) => {
     if (confirm(`Yakin ingin menghapus ${judul}?`)) {
       try {
         const res = await fetch("/api/produk-promo/delete", {
-          method: "POST", // Bisa disesuaikan menjadi 'DELETE' tergantung routing backend Anda
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
         });
 
         if (res.ok) {
           alert("Data berhasil dihapus!");
-          fetchData(); // Reload table
+          fetchData();
         } else {
           alert("Gagal menghapus data dari database.");
         }
@@ -1019,7 +990,6 @@ function UploadProdukView() {
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      {/* Header View */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-lg font-semibold text-blue-600">
@@ -1037,7 +1007,6 @@ function UploadProdukView() {
         </button>
       </div>
 
-      {/* Tabel Data */}
       <div className="overflow-x-auto">
         <table className="w-full whitespace-nowrap border-collapse">
           <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
@@ -1087,7 +1056,7 @@ function UploadProdukView() {
                         <span className="text-xs text-gray-500 font-medium">
                           s.d{" "}
                           {new Date(item.berlaku_sampai).toLocaleDateString(
-                            "id-ID",
+                            "id-ID"
                           )}
                         </span>
                       )}
@@ -1114,7 +1083,6 @@ function UploadProdukView() {
         </table>
       </div>
 
-      {/* Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
@@ -1203,7 +1171,6 @@ function UploadProdukView() {
                 ></textarea>
               </div>
 
-              {/* Input Berlaku Sampai (Hanya wajib untuk PROMO) */}
               {formData.tipe === "PROMO" && (
                 <div>
                   <label className="block text-sm font-semibold mb-1.5 text-gray-700">
@@ -1273,22 +1240,22 @@ function UploadProdukView() {
 }
 
 // ==========================================
-// KOMPONEN: PENGUMUMAN VIEW (DIPERBARUI)
+// 3. KOMPONEN: PENGUMUMAN VIEW
 // ==========================================
 function PengumumanView() {
-  const [dataList, setDataList] = useState([]);
+  const [dataList, setDataList] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     judul: "",
     isi: "",
     status: "AKTIF",
-    jenis_pengumuman: "PRODUK_INFORMASI", // Default
-    target_penerima: "ALL", // Default: Seluruh pegawai
+    jenis_pengumuman: "PRODUK_INFORMASI",
+    target_penerima: "ALL",
   });
-  const [lampiranFile, setLampiranFile] = useState(null);
+  const [lampiranFile, setLampiranFile] = useState<File | null>(null);
   const [lampiranName, setLampiranName] = useState("");
   const [existingLampiran, setExistingLampiran] = useState("");
 
@@ -1302,7 +1269,7 @@ function PengumumanView() {
             ? result.data
             : Array.isArray(result)
               ? result
-              : [],
+              : []
         );
       }
     } catch (error) {
@@ -1314,7 +1281,7 @@ function PengumumanView() {
     fetchData();
   }, []);
 
-  const handleOpenModal = (item = null) => {
+  const handleOpenModal = (item: any = null) => {
     if (item) {
       setEditingId(item.id);
       setFormData({
@@ -1341,7 +1308,7 @@ function PengumumanView() {
     setIsModalOpen(true);
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setLampiranName(file.name);
@@ -1349,13 +1316,13 @@ function PengumumanView() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     const submitData = new FormData();
-    Object.keys(formData).forEach((key) =>
-      submitData.append(key, formData[key]),
+    Object.entries(formData).forEach(([key, value]) =>
+      submitData.append(key, value)
     );
     if (editingId) submitData.append("id", editingId);
     if (lampiranFile) submitData.append("file_lampiran", lampiranFile);
@@ -1373,7 +1340,7 @@ function PengumumanView() {
           alert(
             editingId
               ? "Pengumuman berhasil diperbarui!"
-              : "Pengumuman berhasil ditambahkan!",
+              : "Pengumuman berhasil ditambahkan!"
           );
           setIsModalOpen(false);
           fetchData();
@@ -1391,7 +1358,7 @@ function PengumumanView() {
     }
   };
 
-  const handleDelete = async (id, judul) => {
+  const handleDelete = async (id: string, judul: string) => {
     if (confirm(`Yakin ingin menghapus pengumuman "${judul}"?`)) {
       try {
         const res = await fetch("/api/pengumuman/delete", {
@@ -1558,7 +1525,6 @@ function PengumumanView() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {/* Pilihan List Pengumuman */}
                 <div>
                   <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                     Jenis Pengumuman <span className="text-red-500">*</span>
@@ -1580,7 +1546,6 @@ function PengumumanView() {
                   </select>
                 </div>
 
-                {/* Status Pengumuman */}
                 <div>
                   <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                     Status <span className="text-red-500">*</span>
@@ -1599,7 +1564,6 @@ function PengumumanView() {
                 </div>
               </div>
 
-              {/* Pilihan Target Penerima */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 text-gray-700">
                   Target Penerima Pengumuman{" "}
@@ -1689,76 +1653,608 @@ function PengumumanView() {
 }
 
 // ==========================================
-// 2. KOMPONEN UTAMA: DASHBOARD CONTENT
+// 4. KOMPONEN: CREATE MITRA VIEW
+// ==========================================
+function CreateMitraView() {
+  const [mitraList, setMitraList] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [editingMitraId, setEditingMitraId] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [formData, setFormData] = useState({
+    kode_mitra: "",
+    nama_mitra: "",
+    email: "",
+    no_telp: "",
+    alamat_mitra: "",
+    status: "ACTIVE",
+    username: "",
+    password: "",
+  });
+
+  const fetchMitra = async () => {
+    try {
+      const res = await fetch("/api/mitra");
+      if (res.ok) {
+        const result = await res.json();
+        setMitraList(
+          Array.isArray(result.data)
+            ? result.data
+            : Array.isArray(result)
+              ? result
+              : []
+        );
+      }
+    } catch (error: any) {
+      console.error("Gagal menarik data mitra:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchMitra();
+  }, []);
+
+  const handleAddClick = () => {
+    setEditingMitraId(null);
+    setFormData({
+      kode_mitra: "",
+      nama_mitra: "",
+      email: "",
+      no_telp: "",
+      alamat_mitra: "",
+      status: "ACTIVE",
+      username: "",
+      password: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (mitra: any) => {
+    setEditingMitraId(mitra.id);
+    setFormData({
+      kode_mitra: mitra.kode_mitra || "",
+      nama_mitra: mitra.nama_mitra || "",
+      email: mitra.email || "",
+      no_telp: mitra.no_telp || "",
+      alamat_mitra: mitra.alamat_mitra || "",
+      status: mitra.status || "ACTIVE",
+      username: mitra.username || "",
+      password: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleHapusInactive = async (id: any, namaMitra: string) => {
+    if (confirm(`Apakah Anda yakin ingin menonaktifkan status mitra "${namaMitra}"?`)) {
+      try {
+        const res = await fetch("/api/mitra/update-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, status: "INACTIVE" }),
+        });
+
+        if (res.ok) {
+          alert("Status mitra berhasil diubah menjadi INACTIVE!");
+          fetchMitra();
+        } else {
+          alert("Gagal mengubah status mitra.");
+        }
+      } catch (error: any) {
+        console.error("Error menonaktifkan mitra:", error);
+        alert("Terjadi kesalahan jaringan.");
+      }
+    }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const endpoint = editingMitraId ? "/api/mitra/update" : "/api/mitra/create";
+      const payload = editingMitraId ? { ...formData, id: editingMitraId } : formData;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        alert(
+          editingMitraId
+            ? "Data mitra berhasil diperbarui!"
+            : "Data mitra berhasil ditambahkan!"
+        );
+        setIsModalOpen(false);
+        fetchMitra();
+      } else {
+        const result = await res.json();
+        alert(result.message || "Gagal menyimpan data mitra.");
+      }
+    } catch (error: any) {
+      console.error("Error saving data mitra:", error);
+      alert("Terjadi kesalahan jaringan.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredMitra = mitraList.filter((item) => {
+    if (!searchQuery) return true;
+    const kw = searchQuery.toLowerCase();
+    return (
+      item.nama_mitra?.toLowerCase().includes(kw) ||
+      item.kode_mitra?.toLowerCase().includes(kw) ||
+      item.username?.toLowerCase().includes(kw) ||
+      item.email?.toLowerCase().includes(kw) ||
+      item.alamat_mitra?.toLowerCase().includes(kw)
+    );
+  });
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-blue-600">
+            Daftar Mitra Terdaftar
+          </h2>
+          <p className="text-sm text-gray-500">
+            Kelola data registrasi, akun login, dan alamat mitra perusahaan.
+          </p>
+        </div>
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            placeholder="Cari nama, username, kode, atau alamat..."
+            className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleAddClick}
+            className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-all"
+          >
+            + Add Data Mitra
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full whitespace-nowrap border-collapse">
+          <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+            <tr>
+              <th className="px-6 py-4">No</th>
+              <th className="px-6 py-4">Kode Mitra</th>
+              <th className="px-6 py-4">Nama Mitra</th>
+              <th className="px-6 py-4">Username Akun</th>
+              <th className="px-6 py-4">Kontak (Email / Telp)</th>
+              <th className="px-6 py-4">Alamat Mitra</th>
+              <th className="px-6 py-4 text-center">Status</th>
+              <th className="px-6 py-4 text-center">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
+            {filteredMitra.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                  Belum ada data mitra terdaftar.
+                </td>
+              </tr>
+            ) : (
+              filteredMitra.map((mitra: any, index: number) => (
+                <tr key={mitra.id || index} className="hover:bg-blue-50/30 transition-colors">
+                  <td className="px-6 py-4 text-center font-medium">{index + 1}</td>
+                  <td className="px-6 py-4 font-mono text-xs font-bold text-gray-700">
+                    {mitra.kode_mitra || "-"}
+                  </td>
+                  <td className="px-6 py-4 font-semibold text-gray-900">
+                    {mitra.nama_mitra || "-"}
+                  </td>
+                  <td className="px-6 py-4 font-mono text-xs font-semibold text-blue-600">
+                    {mitra.username ? `@${mitra.username}` : "-"}
+                  </td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <div>{mitra.email || "-"}</div>
+                    <div className="text-xs text-gray-400">{mitra.no_telp || "-"}</div>
+                  </td>
+                  <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={mitra.alamat_mitra}>
+                    {mitra.alamat_mitra || "-"}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${
+                        mitra.status === "ACTIVE"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {mitra.status || "INACTIVE"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={() => handleEditClick(mitra)}
+                      className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1 rounded transition-colors text-xs mr-2"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleHapusInactive(mitra.id, mitra.nama_mitra)}
+                      className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1 rounded transition-colors text-xs"
+                    >
+                      Hapus
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto">
+            <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
+              <h2 className="text-lg font-bold text-gray-800">
+                {editingMitraId ? "Edit Data Mitra" : "Add Data Mitra Baru"}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleFormSubmit} className="p-6 space-y-4 overflow-y-auto flex-1" autoComplete="off">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    Kode Mitra
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={editingMitraId ? formData.kode_mitra : "(Otomatis oleh Sistem)"}
+                    className="w-full bg-gray-100 text-gray-500 border border-gray-300 rounded-lg p-2.5 text-sm cursor-not-allowed font-mono font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                  Nama Mitra / Perusahaan <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.nama_mitra}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, nama_mitra: e.target.value })}
+                  placeholder="Masukkan nama mitra..."
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    Email Kontak <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="mitra@example.com"
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    No. Telepon / WA <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.no_telp}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, no_telp: e.target.value })}
+                    placeholder="081234567890"
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    Username Akun <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    required
+                    value={formData.username}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder="Masukkan username..."
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                    Password Akun
+                    {editingMitraId ? (
+                      <span className="text-[10px] text-gray-400 ml-1 font-normal">
+                        (Kosongkan jika tak ubah)
+                      </span>
+                    ) : (
+                      <span className="text-red-500 ml-0.5">*</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    readOnly
+                    onFocus={(e) => e.target.removeAttribute("readOnly")}
+                    required={!editingMitraId}
+                    value={formData.password}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder={editingMitraId ? "********" : "Masukkan password..."}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                  Alamat Lengkap Mitra <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={formData.alamat_mitra}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, alamat_mitra: e.target.value })}
+                  placeholder="Masukkan alamat kantor / operasional mitra..."
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                ></textarea>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t mt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? "Menyimpan..." : "Simpan Data Mitra"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// 5. KOMPONEN UTAMA: DASHBOARD CONTENT
 // ==========================================
 function DashboardContent() {
   const { data: session, status } = useSession();
   const [isFrontlineOpen, setIsFrontlineOpen] = useState(false);
   const [currentView, setCurrentView] = useState("welcome");
 
-  const [frontlineList, setFrontlineList] = useState([]);
-  const [leadersList, setLeadersList] = useState([]);
-  const [selectedData, setSelectedData] = useState(null);
+  const [frontlineList, setFrontlineList] = useState<any[]>([]);
+  const [leadersList, setLeadersList] = useState<any[]>([]);
+  const [selectedData, setSelectedData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const [wilayahData, setWilayahData] = useState([]);
+  const [wilayahData, setWilayahData] = useState<any[]>([]);
   const [selectedKanwil, setSelectedKanwil] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
   const [selectedPenempatan, setSelectedPenempatan] = useState("");
   const [selectedLeader, setSelectedLeader] = useState("");
 
   const [idCardName, setIdCardName] = useState("");
-  const [stNames, setStNames] = useState([]);
+  const [stNames, setStNames] = useState<any[]>([]);
   const [qnaFileName, setQnaFileName] = useState("");
 
-  const [isSecurityOpen, setIsSecurityOpen] = useState(false);
-  const [isObCsOpen, setIsObCsOpen] = useState(false);
-  const [isTeknisiOpen, setIsTeknisiOpen] = useState(false);
-
-  // --- STATE UPLOAD FEE (EXCEL) ---
+  // STATE UPLOAD FEE (EXCEL)
   const [feeFilterType, setFeeFilterType] = useState("");
   const [feeFilterValue, setFeeFilterValue] = useState("");
-  const [feeExcelFile, setFeeExcelFile] = useState(null);
+  const [feeExcelFile, setFeeExcelFile] = useState<File | null>(null);
   const [isUploadingFee, setIsUploadingFee] = useState(false);
 
-  // --- STATE LAPORAN & ADUAN (SUPER ADMIN) ---
-  const [laporanList, setLaporanList] = useState([]);
+  // STATE LAPORAN & ADUAN (SUPER ADMIN)
+  const [laporanList, setLaporanList] = useState<any[]>([]);
   const [isLoadingLaporan, setIsLoadingLaporan] = useState(false);
-  const [selectedLaporan, setSelectedLaporan] = useState(null);
+  const [selectedLaporan, setSelectedLaporan] = useState<any>(null);
   const [replyText, setReplyText] = useState("");
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [replyMsg, setReplyMsg] = useState({ type: "", text: "" });
 
-  // Tambahkan state halaman aktif
   const [currentPageListAkun, setCurrentPageListAkun] = useState(1);
   const [currentPagePenutupanAkun, setCurrentPagePenutupanAkun] = useState(1);
   const itemsPerPage = 10;
 
-  // --- STATE PENCARIAN UNTUK PEMBUATAN & PENUTUPAN AKUN ---
   const [searchListAkun, setSearchListAkun] = useState("");
   const [searchPenutupanAkun, setSearchPenutupanAkun] = useState("");
 
-  // State Baru
-  const [nonFrontingList, setNonFrontingList] = useState([]);
+  const [nonFrontingList, setNonFrontingList] = useState<any[]>([]);
   const [searchNonFronting, setSearchNonFronting] = useState("");
   const [pasFotoName, setPasFotoName] = useState("");
   const [suratTugasName, setSuratTugasName] = useState("");
-  const [unitKerjaOptions, setUnitKerjaOptions] = useState([]);
+  const [unitKerjaOptions, setUnitKerjaOptions] = useState<any[]>([]);
+  const [selectedUnitKerja, setSelectedUnitKerja] = useState<string>("");
+  const [isUnitKerjaMenuOpen, setIsUnitKerjaMenuOpen] = useState<boolean>(false);
 
-  // TAMBAHKAN STATE INI:
   const [jabatanNonFronting, setJabatanNonFronting] = useState("");
+  const [editFormData, setEditFormData] = useState<any>(null);
 
-  // Fungsi Fetch
+  const [mitraOptions, setMitraOptions] = useState<any[]>([]);
+  const [editJabatan, setEditJabatan] = useState("PEGAWAI");
+  const [editSupervisor, setEditSupervisor] = useState("");
+
+  const [nikValue, setNikValue] = useState(selectedData?.nik || "");
+
+  useEffect(() => {
+    setNikValue(selectedData?.nik || "");
+  }, [selectedData, currentView]);
+
+  useEffect(() => {
+    if (editFormData) {
+      const currentJab = editFormData.jabatan || "PEGAWAI";
+      setEditJabatan(currentJab);
+      setEditSupervisor(currentJab.toUpperCase() === "SUPERVISOR" ? "" : editFormData.supervisor || "");
+    }
+  }, [editFormData]);
+
+  interface Supervisor {
+    id: number;
+    nama: string;
+    email: string;
+    username?: string;
+    no_hp?: string | null;
+    mitra_id?: number | null;
+    unit_kerja?: string | null;
+  }
+
+  // 1. State untuk Edit & Delete
+  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+  const [editingSpv, setEditingSpv] = useState<Supervisor | null>(null);
+  const [editForm, setEditForm] = useState({
+    nama: "",
+    email: "",
+    username: "",
+    no_hp: "",
+    mitra_id: "",
+    unit_kerja: "",
+    password: "", // Selalu kosong di awal saat buka modal edit
+  });
+  const [deletingSpv, setDeletingSpv] = useState<Supervisor | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 2. Buka Modal Edit & Normalisasi Nilai Dropdown ke String
+  const handleOpenEdit = (spv: Supervisor) => {
+    setEditingSpv(spv);
+    setEditForm({
+      nama: spv.nama ?? "",
+      email: spv.email ?? "",
+      username: spv.username ?? "",
+      no_hp: spv.no_hp ?? "",
+      mitra_id: spv.mitra_id ? String(spv.mitra_id) : "",
+      unit_kerja: spv.unit_kerja ?? "",
+      password: "",
+    });
+  };
+
+  // 3. Submit Perubahan Supervisor
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSpv) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/supervisors/${editingSpv.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        alert(result.message || "Gagal memperbarui data supervisor");
+        return;
+      }
+
+      // Update baris terkait secara langsung di state tabel
+      setSupervisors((prev) =>
+        prev.map((item) => (item.id === editingSpv.id ? result.data : item))
+      );
+      setEditingSpv(null);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan jaringan saat menyimpan perubahan");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 4. Eksekusi Hapus Supervisor
+  const handleConfirmDelete = async () => {
+    if (!deletingSpv) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/supervisors/${deletingSpv.id}`, {
+        method: "DELETE",
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        alert(result.message || "Gagal menghapus supervisor");
+        return;
+      }
+
+      setSupervisors((prev) => prev.filter((item) => item.id !== deletingSpv.id));
+      setDeletingSpv(null);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan jaringan saat menghapus data");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const fetchMitraOptions = async () => {
+    try {
+      const res = await fetch("/api/mitra");
+      const result = await res.json();
+      if (result.success) {
+        const activeMitra = (result.data || []).filter(
+          (m: any) => m.status === "ACTIVE"
+        );
+        setMitraOptions(activeMitra);
+      }
+    } catch (error: any) {
+      console.error("Gagal mengambil data mitra:", error);
+    }
+  };
+
   const fetchNonFrontingData = async () => {
     try {
       const res = await fetch("/super-admin/get-non-fronting");
+      if (!res.ok) throw new Error(`Server Error: ${res.status}`);
       const result = await res.json();
       if (result.success) {
-        setNonFrontingList(result.data);
+        setNonFrontingList(result.data || []);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gagal mengambil data non-fronting:", error);
     }
   };
@@ -1768,16 +2264,64 @@ function DashboardContent() {
       const res = await fetch("/super-admin/get-unit-kerja");
       const result = await res.json();
       if (result.success) {
-        setUnitKerjaOptions(result.data);
+        setUnitKerjaOptions(result.data || []);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gagal mengambil data unit kerja:", error);
     }
   };
 
-  // Helper untuk memisahkan Pertanyaan & Jawaban
-  const parseDeskripsi = (desc) => {
-    if (!desc) return { pertanyaan: "", jawaban: "" };
+  useEffect(() => {
+    fetchUnitKerjaData();
+    fetchMitraOptions();
+  }, [currentView]);
+
+  const handleNonAktifkanPegawai = async (id: any, namaPegawai: string) => {
+    if (confirm(`Yakin ingin menghapus akun pegawai "${namaPegawai}"?`)) {
+      try {
+        const res = await fetch("/super-admin/delete-data-pegawai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          alert(`Akun pegawai ${namaPegawai} berhasil dihapus!`);
+          fetchNonFrontingData();
+        } else {
+          alert(result.message || "Gagal menghapus akun pegawai.");
+        }
+      } catch (error: any) {
+        console.error("Error menonaktifkan pegawai:", error);
+        alert("Terjadi kesalahan sistem.");
+      }
+    }
+  };
+
+  const handleEditNonFronting = (item: any) => {
+    const formatDate = (dateStr: any) => {
+      if (!dateStr) return "";
+      try {
+        const d = new Date(dateStr);
+        return isNaN(d.getTime()) ? String(dateStr).slice(0, 10) : d.toISOString().split("T")[0];
+      } catch {
+        return String(dateStr).slice(0, 10);
+      }
+    };
+
+    const formattedItem = {
+      ...item,
+      tanggal_lahir: formatDate(item.tanggal_lahir),
+      tanggal_mulai_kerja: formatDate(item.tanggal_mulai_kerja),
+    };
+
+    setSelectedData(formattedItem);
+    setEditFormData(formattedItem);
+    setCurrentView("edit-non-fronting");
+  };
+
+  const parseDeskripsi = (desc: any) => {
+    if (!desc) return { pertanyaan: "", jawaban: "", isAnswered: false };
     const parts = desc.split("\n\nJawaban :\n");
     const rawPertanyaan = parts[0]?.replace("Pertanyaan :\n", "") || "";
     const rawJawaban = parts[1] || "";
@@ -1790,7 +2334,6 @@ function DashboardContent() {
     };
   };
 
-  // --- FILTER & PAGING UNTUK LIST AKUN ---
   const filteredListAkun = frontlineList.filter((item) => {
     if (!searchListAkun) return true;
     const keyword = searchListAkun.toLowerCase();
@@ -1802,16 +2345,14 @@ function DashboardContent() {
     );
   });
 
-  // --- Paging untuk List Akun ---
   const indexOfLastItemAkun = currentPageListAkun * itemsPerPage;
   const indexOfFirstItemAkun = indexOfLastItemAkun - itemsPerPage;
   const currentListAkun = filteredListAkun.slice(
     indexOfFirstItemAkun,
-    indexOfLastItemAkun,
+    indexOfLastItemAkun
   );
   const totalPagesListAkun = Math.ceil(filteredListAkun.length / itemsPerPage);
 
-  // --- FILTER & PAGING UNTUK PENUTUPAN AKUN ---
   const filteredPenutupanAkun = frontlineList.filter((item) => {
     if (!searchPenutupanAkun) return true;
     const keyword = searchPenutupanAkun.toLowerCase();
@@ -1823,19 +2364,17 @@ function DashboardContent() {
     );
   });
 
-  // --- Paging untuk Penutupan Akun ---
   const indexOfLastItemPenutupan = currentPagePenutupanAkun * itemsPerPage;
   const indexOfFirstItemPenutupan = indexOfLastItemPenutupan - itemsPerPage;
   const currentPenutupanAkun = filteredPenutupanAkun.slice(
     indexOfFirstItemPenutupan,
-    indexOfLastItemPenutupan,
+    indexOfLastItemPenutupan
   );
   const totalPagesPenutupanAkun = Math.ceil(
-    filteredPenutupanAkun.length / itemsPerPage,
+    filteredPenutupanAkun.length / itemsPerPage
   );
 
   useEffect(() => {
-    // Tambahkan 'upload-fee' agar data pegawai ditarik
     if (
       currentView === "list-akun" ||
       currentView === "penutupan-akun" ||
@@ -1843,7 +2382,6 @@ function DashboardContent() {
     ) {
       fetchFrontlineData();
     }
-    // Tambahkan 'upload-fee' agar data wilayah dan leader ditarik
     if (
       currentView === "form-tambah" ||
       currentView === "form-edit" ||
@@ -1855,35 +2393,12 @@ function DashboardContent() {
     if (currentView === "laporan-aduan") {
       fetchLaporanAduan();
     }
-    if (
-      [
-        "list-security",
-        "list-obcs",
-        "list-teknisi",
-        "create-non-fronting",
-      ].includes(currentView)
-    ) {
+    if (["list-unit-kerja", "create-non-fronting"].includes(currentView)) {
       fetchNonFrontingData();
-    }
-    // TAMBAHKAN BARIS INI: Tarik master unit kerja saat membuka form
-    if (currentView === "create-non-fronting") {
-      fetchUnitKerjaData();
-      setJabatanNonFronting(""); // Reset nilai saat masuk halaman
     }
   }, [currentView]);
 
-  const handlePasFotoChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setPasFotoName(e.target.files[0].name);
-    }
-  };
-  const handleSuratTugasChangeNonFronting = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSuratTugasName(e.target.files[0].name);
-    }
-  };
-
-  const handleNonFrontingSubmit = async (e) => {
+  const handleNonFrontingSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setSuccessMessage("");
@@ -1900,19 +2415,92 @@ function DashboardContent() {
       const result = await response.json();
 
       if (result.success) {
-        setSuccessMessage(`Akun berhasil dibuat!`);
+        setSuccessMessage(`Akun Non-Fronting berhasil dibuat!`);
         formElement.reset();
         setPasFotoName("");
         setSuratTugasName("");
         setTimeout(() => setSuccessMessage(""), 3000);
-
-        // TAMBAHKAN BARIS INI:
         setJabatanNonFronting("");
       } else {
         setErrorMessage(result.message || "Gagal membuat akun.");
         setTimeout(() => setErrorMessage(""), 5000);
       }
     } catch (error) {
+      setErrorMessage("Terjadi kesalahan sistem.");
+      setTimeout(() => setErrorMessage(""), 5000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper untuk mengenerate URL file dari Cloudinary atau simpanan lokal
+  const getFileUrl = (fileRef: string | null | undefined, folder: string) => {
+    if (!fileRef) return "#";
+    
+    // 1. Jika fileRef sudah berupa URL publik lengkap (Cloudinary / HTTP / HTTPS)
+    if (
+      fileRef.startsWith("http://") || 
+      fileRef.startsWith("https://") || 
+      fileRef.includes("cloudinary.com")
+    ) {
+      return fileRef;
+    }
+    
+    // 2. Jika fileRef sudah mengandung path /uploads/
+    if (fileRef.startsWith("/uploads/")) {
+      return fileRef;
+    }
+
+    // 3. Jika fileRef hanya berupa nama file lokal (misal: FOTO_1788514110248_...jpg)
+    return `/uploads/${folder}/${fileRef}`;
+  };
+
+  // Handler ketika Jabatan diubah di Form Edit
+  const handleEditJabatanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setEditJabatan(val);
+
+    // Jika diubah menjadi SUPERVISOR, otomatis reset field supervisor
+    if (val.toUpperCase() === "SUPERVISOR") {
+      setEditSupervisor("");
+    }
+  };
+
+  const handleEditNonFrontingSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setSuccessMessage("");
+    setErrorMessage("");
+
+    const formElement = e.currentTarget;
+    const formData = new FormData(formElement);
+
+    if (selectedData?.id) {
+      formData.append("id", String(selectedData.id));
+    }
+
+    try {
+      const response = await fetch("/super-admin/update-non-fronting", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        setSuccessMessage("Data pegawai berhasil diperbarui!");
+        fetchNonFrontingData();
+
+        setTimeout(() => {
+          setSuccessMessage("");
+          setSelectedData(null);
+          setCurrentView("list-unit-kerja");
+        }, 1500);
+      } else {
+        setErrorMessage(result.message || "Gagal memperbarui data pegawai.");
+        setTimeout(() => setErrorMessage(""), 5000);
+      }
+    } catch (error: any) {
+      console.error("Error update non-fronting:", error);
       setErrorMessage("Terjadi kesalahan sistem.");
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
@@ -1951,14 +2539,14 @@ function DashboardContent() {
     }
   };
 
-  const handleOpenLaporan = (item) => {
+  const handleOpenLaporan = (item: any) => {
     setSelectedLaporan(item);
     const parsed = parseDeskripsi(item.deskripsi);
     setReplyText(parsed.jawaban);
     setReplyMsg({ type: "", text: "" });
   };
 
-  const handleSubmitReply = async (e) => {
+  const handleSubmitReply = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!replyText.trim()) return;
 
@@ -1989,7 +2577,7 @@ function DashboardContent() {
               };
             }
             return l;
-          }),
+          })
         );
 
         setTimeout(() => setSelectedLaporan(null), 1500);
@@ -2006,10 +2594,17 @@ function DashboardContent() {
     }
   };
 
-  function Pagination({ currentPage, totalPages, onPageChange }) {
+  function Pagination({
+    currentPage,
+    totalPages,
+    onPageChange,
+  }: {
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+  }) {
     if (totalPages <= 1) return null;
 
-    // Logika untuk menampilkan maksimal 5 tombol halaman agar tidak terlalu panjang
     const getPageNumbers = () => {
       const pages = [];
       let startPage = Math.max(1, currentPage - 2);
@@ -2033,7 +2628,6 @@ function DashboardContent() {
           Menampilkan halaman <b>{currentPage}</b> dari <b>{totalPages}</b>
         </span>
         <div className="flex items-center gap-1">
-          {/* Tombol Sebelumnya */}
           <button
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
@@ -2042,7 +2636,6 @@ function DashboardContent() {
             &larr; Prev
           </button>
 
-          {/* Tombol Nomor Halaman */}
           {getPageNumbers().map((num) => (
             <button
               key={num}
@@ -2057,7 +2650,6 @@ function DashboardContent() {
             </button>
           ))}
 
-          {/* Tombol Selanjutnya */}
           <button
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
@@ -2073,30 +2665,16 @@ function DashboardContent() {
   const fetchFrontlineData = async () => {
     try {
       const res = await fetch("/api/get-fronting/search");
-
-      // Periksa apakah HTTP request berhasil (status 200-299)
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
 
       const result = await res.json();
-      console.log("Data API Frontline:", result); // Cek format data di Console Browser
-
-      // Jika response memiliki struktur { success: true, data: [...] }
       if (result.success !== undefined) {
         if (result.success) {
           setFrontlineList(Array.isArray(result.data) ? result.data : []);
-        } else {
-          console.error("API gagal:", result.message);
         }
-      }
-      // Jika response langsung berupa Array [ {...}, {...} ]
-      else if (Array.isArray(result)) {
+      } else if (Array.isArray(result)) {
         setFrontlineList(result);
-      }
-      // Jika format tidak dikenali
-      else {
-        console.warn("Format data tidak sesuai ekspektasi:", result);
+      } else {
         setFrontlineList([]);
       }
     } catch (error) {
@@ -2128,29 +2706,29 @@ function DashboardContent() {
   };
 
   const kanwilOptions = Array.from(
-    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean)),
+    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean))
   );
   const areaOptions = Array.from(
     new Set(
       wilayahData
         .filter((item) => item?.kanwil === selectedKanwil)
         .map((item) => item?.area)
-        .filter(Boolean),
-    ),
+        .filter(Boolean)
+    )
   );
   const penempatanOptions = Array.from(
     new Set(
       wilayahData
         .filter(
           (item) =>
-            item?.kanwil === selectedKanwil && item?.area === selectedArea,
+            item?.kanwil === selectedKanwil && item?.area === selectedArea
         )
         .map((item) => item?.penempatan)
-        .filter(Boolean),
-    ),
+        .filter(Boolean)
+    )
   );
 
-  const parseJSON = (data) => {
+  const parseJSON = (data: any) => {
     try {
       return typeof data === "string"
         ? JSON.parse(data)
@@ -2175,7 +2753,7 @@ function DashboardContent() {
     );
   });
 
-  const handleEdit = (item) => {
+  const handleEdit = (item: any) => {
     setSelectedData(item);
     setCurrentView("form-edit");
   };
@@ -2186,6 +2764,7 @@ function DashboardContent() {
         Memuat sesi...
       </div>
     );
+
   if (!session) {
     return (
       <div className="flex h-screen items-center justify-center flex-col gap-4 bg-gray-100">
@@ -2202,7 +2781,7 @@ function DashboardContent() {
     );
   }
 
-  const handleIdCardChange = (e) => {
+  const handleIdCardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
@@ -2215,7 +2794,7 @@ function DashboardContent() {
     }
   };
 
-  const handleStChange = (e) => {
+  const handleStChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 3) {
       alert("Maksimal hanya 3 file Surat Tugas yang dapat dipilih!");
@@ -2234,7 +2813,7 @@ function DashboardContent() {
     setStNames(files.map((f) => f.name));
   };
 
-  const handleQnaFileChange = (e) => {
+  const handleQnaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const allowedTypes = [
@@ -2257,19 +2836,22 @@ function DashboardContent() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setSuccessMessage("");
     setErrorMessage("");
     const formElement = e.currentTarget;
     const formData = new FormData(formElement);
+
     const endpoint =
       currentView === "form-edit"
         ? "/super-admin/edit-account"
         : "/super-admin/create-account";
-    if (currentView === "form-edit" && selectedData)
-      formData.append("id", String(selectedData.id));
+
+    if (currentView === "form-edit" && selectedData) {
+      formData.append("id", String(selectedData?.id || ""));
+    }
 
     try {
       const response = await fetch(endpoint, {
@@ -2294,7 +2876,8 @@ function DashboardContent() {
         setErrorMessage(result.message);
         setTimeout(() => setErrorMessage(""), 5000);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Error submitting form:", error);
       setErrorMessage("Terjadi kesalahan sistem.");
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
@@ -2302,7 +2885,7 @@ function DashboardContent() {
     }
   };
 
-  const handleQnaSubmit = async (e) => {
+  const handleQnaSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setSuccessMessage("");
@@ -2314,9 +2897,6 @@ function DashboardContent() {
         method: "POST",
         body: formData,
       });
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json"))
-        throw new Error("Bukan JSON");
       const result = await response.json();
       if (result.success) {
         setSuccessMessage("Materi QnA berhasil diunggah!");
@@ -2335,7 +2915,7 @@ function DashboardContent() {
     }
   };
 
-  const handleUploadFee = async (e) => {
+  const handleUploadFee = async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     if (!feeFilterType || !feeFilterValue || !feeExcelFile) {
       setErrorMessage("Lengkapi filter dan pilih file Excel!");
@@ -2358,14 +2938,11 @@ function DashboardContent() {
 
       if (data.success) {
         setSuccessMessage("Berhasil: " + data.message);
-
-        // Reset form setelah berhasil
         setFeeExcelFile(null);
         setFeeFilterType("");
         setFeeFilterValue("");
 
-        // Kosongkan input file secara manual
-        const fileInput = document.getElementById("excel-fee-upload");
+        const fileInput = document.getElementById("excel-fee-upload") as HTMLInputElement | null;
         if (fileInput) fileInput.value = "";
 
         setTimeout(() => setSuccessMessage(""), 4000);
@@ -2373,7 +2950,7 @@ function DashboardContent() {
         setErrorMessage("Gagal: " + data.message);
         setTimeout(() => setErrorMessage(""), 5000);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       setErrorMessage("Terjadi kesalahan sistem saat mengunggah file.");
       setTimeout(() => setErrorMessage(""), 5000);
@@ -2382,7 +2959,6 @@ function DashboardContent() {
     }
   };
 
-  // --- DATA UNIK UNTUK FILTER UPLOAD FEE (Persis seperti Dashboard Keuangan) ---
   const uniqueAreasFinance = [
     ...new Set(wilayahData.map((item) => item?.area).filter(Boolean)),
   ];
@@ -2390,11 +2966,23 @@ function DashboardContent() {
     ...new Set(leadersList.map((item) => item?.nama_leader).filter(Boolean)),
   ];
 
-  const getSubMenuClass = (viewName) =>
+  const getSubMenuClass = (viewName: string) =>
     `block px-4 py-2 text-sm rounded transition-colors ${currentView === viewName ? "text-white font-bold bg-gray-800" : "text-gray-400 hover:text-white hover:bg-gray-800"}`;
+
+  const filteredNonFrontingByUnit = nonFrontingList.filter((item) => {
+    const matchesUnit = selectedUnitKerja ? item.unit_kerja === selectedUnitKerja : true;
+    if (!searchNonFronting) return matchesUnit;
+    const kw = searchNonFronting.toLowerCase();
+    return matchesUnit && (
+      item.nama?.toLowerCase().includes(kw) ||
+      item.nik?.toLowerCase().includes(kw) ||
+      item.username?.toLowerCase().includes(kw)
+    );
+  });
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
+      {/* SIDEBAR NAVIGATION */}
       <div className="w-72 bg-gray-900 text-white flex flex-col">
         <div
           className="p-6 text-xl font-bold border-b border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-800 transition-colors"
@@ -2404,7 +2992,7 @@ function DashboardContent() {
         </div>
         <div className="p-4 flex-grow overflow-y-auto">
           <div className="text-xs text-gray-500 font-bold uppercase mb-4 px-2">
-            Menu
+            Menu Utama
           </div>
           <ul className="space-y-1">
             <li>
@@ -2486,7 +3074,6 @@ function DashboardContent() {
               </button>
             </li>
 
-            {/* MENU BARU: LAPORAN & ADUAN PEGAWAI */}
             <li>
               <button
                 onClick={() => setCurrentView("laporan-aduan")}
@@ -2505,7 +3092,6 @@ function DashboardContent() {
               </button>
             </li>
 
-            {/* MENU BARU: PEMBUATAN AKUN NON-FRONTING */}
             <li className="mt-2">
               <button
                 onClick={() => setCurrentView("create-non-fronting")}
@@ -2515,76 +3101,46 @@ function DashboardContent() {
               </button>
             </li>
 
-            {/* KATEGORI: SECURITY / DRIVER */}
             <li>
               <button
-                onClick={() => setIsSecurityOpen(!isSecurityOpen)}
-                className={`w-full flex items-center justify-between px-6 py-3 transition-colors ${isSecurityOpen ? "bg-[#1e2532] text-white" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`}
-                type="button"
+                onClick={() => setCurrentView("create-mitra")}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === "create-mitra" ? "bg-gray-800 text-white font-bold" : "text-gray-400 hover:text-white hover:bg-gray-800"}`}
               >
-                <span className="text-sm">Security / Driver</span>
-                <span className="text-[10px]">
-                  {isSecurityOpen ? "◀" : "▼"}
-                </span>
+                Create Mitra
               </button>
-              {isSecurityOpen && (
-                <ul className="bg-[#111622] py-1">
-                  <li>
-                    <button
-                      onClick={() => setCurrentView("list-security")}
-                      className={`w-full text-left pl-10 pr-4 py-2.5 text-xs transition-colors ${currentView === "list-security" ? "text-white font-medium" : "text-gray-400 hover:text-white"}`}
-                    >
-                      Data Pegawai
-                    </button>
-                  </li>
-                </ul>
-              )}
             </li>
 
-            {/* KATEGORI: OB / CS */}
-            <li>
+            <li className="mt-2">
               <button
-                onClick={() => setIsObCsOpen(!isObCsOpen)}
-                className={`w-full flex items-center justify-between px-6 py-3 transition-colors ${isObCsOpen ? "bg-[#1e2532] text-white" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`}
+                onClick={() => setIsUnitKerjaMenuOpen(!isUnitKerjaMenuOpen)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-sm rounded-md transition-colors ${
+                  isUnitKerjaMenuOpen ? "bg-gray-800 text-white font-bold" : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
                 type="button"
               >
-                <span className="text-sm">OB / CS</span>
-                <span className="text-[10px]">{isObCsOpen ? "◀" : "▼"}</span>
+                <span>Data Pegawai Unit Kerja</span>
+                <span className="text-[10px]">{isUnitKerjaMenuOpen ? "▲" : "▼"}</span>
               </button>
-              {isObCsOpen && (
-                <ul className="bg-[#111622] py-1">
-                  <li>
-                    <button
-                      onClick={() => setCurrentView("list-obcs")}
-                      className={`w-full text-left pl-10 pr-4 py-2.5 text-xs transition-colors ${currentView === "list-obcs" ? "text-white font-medium" : "text-gray-400 hover:text-white"}`}
-                    >
-                      Data Pegawai
-                    </button>
-                  </li>
-                </ul>
-              )}
-            </li>
 
-            {/* KATEGORI: TEKNISI */}
-            <li>
-              <button
-                onClick={() => setIsTeknisiOpen(!isTeknisiOpen)}
-                className={`w-full flex items-center justify-between px-6 py-3 transition-colors ${isTeknisiOpen ? "bg-[#1e2532] text-white" : "text-gray-300 hover:bg-gray-800 hover:text-white"}`}
-                type="button"
-              >
-                <span className="text-sm">Teknisi</span>
-                <span className="text-[10px]">{isTeknisiOpen ? "◀" : "▼"}</span>
-              </button>
-              {isTeknisiOpen && (
-                <ul className="bg-[#111622] py-1">
-                  <li>
-                    <button
-                      onClick={() => setCurrentView("list-teknisi")}
-                      className={`w-full text-left pl-10 pr-4 py-2.5 text-xs transition-colors ${currentView === "list-teknisi" ? "text-white font-medium" : "text-gray-400 hover:text-white"}`}
-                    >
-                      Data Pegawai
-                    </button>
-                  </li>
+              {isUnitKerjaMenuOpen && (
+                <ul className="mt-1 ml-2 pl-2 border-l border-gray-700 space-y-1">
+                  {unitKerjaOptions.map((unit: any) => (
+                    <li key={unit.id}>
+                      <button
+                        onClick={() => {
+                          setSelectedUnitKerja(unit.nama_unit);
+                          setCurrentView("list-unit-kerja");
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs rounded transition-colors ${
+                          currentView === "list-unit-kerja" && selectedUnitKerja === unit.nama_unit
+                            ? "text-white font-bold bg-blue-600"
+                            : "text-gray-400 hover:text-white hover:bg-gray-800"
+                        }`}
+                      >
+                        {unit.nama_unit}
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </li>
@@ -2601,6 +3157,7 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* CONTENT MAIN CONTAINER */}
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="mb-8 border-b pb-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">
@@ -2609,32 +3166,43 @@ function DashboardContent() {
             {(currentView === "form-tambah" || currentView === "form-edit") &&
               "Form Registrasi / Edit Akun"}
             {currentView === "upload-qna" && "Upload Materi QnA"}
+            {currentView === "upload-fee" && "Upload Jumlah Fee Pribadi"}
+            {currentView === "upload-konten" && "Upload Konten Edukasi"}
             {currentView === "penutupan-akun" && "Penutupan Akun"}
             {currentView === "create-leader" && "Manajemen Data Leader"}
             {currentView === "laporan-aduan" && "Laporan & Aduan Pegawai"}
-            {currentView === "create-non-fronting" &&
-              "Pembuatan Akun Non-Fronting"}
-            {["list-security", "list-obcs", "list-teknisi"].includes(
-              currentView,
-            ) && "Data Pegawai Non-Fronting"}
-            {currentView !== "welcome" &&
-              currentView !== "list-akun" &&
-              currentView !== "form-tambah" &&
-              currentView !== "form-edit" &&
-              currentView !== "upload-qna" &&
-              currentView !== "penutupan-akun" &&
-              currentView !== "create-leader" &&
-              currentView !== "laporan-aduan" &&
-              currentView !== "create-non-fronting" &&
-              !["list-security", "list-obcs", "list-teknisi"].includes(
-                currentView,
-              ) &&
-              "Manajemen Sistem"}
+            {currentView === "create-non-fronting" && "Pembuatan Akun Non-Fronting"}
+            {currentView === "edit-non-fronting" && "Edit Data Pegawai Non-Fronting"}
+            {currentView === "create-mitra" && "Manajemen Data Mitra"}
+            {currentView === "list-unit-kerja" && `Data Pegawai - ${selectedUnitKerja || "Unit Kerja"}`}
           </h1>
           <span className="text-sm text-gray-600">
             Login sebagai: <b>{session?.user?.name || "Super Admin"}</b>
           </span>
         </div>
+
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-800 font-medium rounded-lg text-sm flex items-center justify-between">
+            <span>{successMessage}</span>
+            <button
+              onClick={() => setSuccessMessage("")}
+              className="text-green-600 hover:text-green-800 font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 font-medium rounded-lg text-sm flex items-center justify-between">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage("")}
+              className="text-red-600 hover:text-red-800 font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {currentView === "welcome" && (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
@@ -2644,9 +3212,7 @@ function DashboardContent() {
                 Selamat datang di halaman dashboard super admin
               </h2>
               <p className="text-gray-600">
-                Silakan pilih menu <b>Fronting &gt; Pembuatan Akun</b> untuk
-                mengelola data pegawai, atau menu <b>Create Leader</b> untuk
-                data leader.
+                Silakan pilih menu navigasi di sebelah kiri untuk mengelola akun fronting, non-fronting, mitra, pengumuman, dan data operasional.
               </p>
             </div>
           </div>
@@ -2657,6 +3223,158 @@ function DashboardContent() {
         {currentView === "pengumuman" && <PengumumanView />}
 
         {currentView === "create-leader" && <CreateLeaderView />}
+
+        {currentView === "create-mitra" && <CreateMitraView />}
+
+        {currentView === "upload-qna" && (
+          <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+            <h2 className="text-lg font-semibold text-blue-600 mb-2">
+              Upload Materi QnA / Edukasi
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Unggah file dokumen materi QnA (PDF, DOCX, XLSX, JPG, PNG) untuk dapat diakses oleh tim.
+            </p>
+
+            <form onSubmit={handleQnaSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-gray-700">
+                  Judul Materi QnA <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="judul"
+                  required
+                  placeholder="Masukkan judul materi..."
+                  className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-gray-700">
+                  File Dokumen Materi <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  name="file_qna"
+                  required
+                  accept=".pdf, .doc, .docx, .xls, .xlsx, .jpg, .jpeg, .png"
+                  onChange={handleQnaFileChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1.5 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                />
+                {qnaFileName && (
+                  <p className="mt-1 text-xs text-green-600 font-medium">
+                    File terpilih: {qnaFileName}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoading ? "Mengunggah..." : "Unggah Materi QnA"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {currentView === "upload-fee" && (
+          <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+            <h2 className="text-lg font-semibold text-blue-600 mb-2">
+              Upload Jumlah Fee Pribadi (Excel)
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Unggah file Excel perhitungan fee pribadi pegawai berdasarkan filter Area atau Leader.
+            </p>
+
+            <form onSubmit={handleUploadFee} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1 text-gray-700">
+                    Filter Berdasarkan <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={feeFilterType}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      setFeeFilterType(e.target.value);
+                      setFeeFilterValue("");
+                    }}
+                    required
+                    className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Filter --</option>
+                    <option value="AREA">Area</option>
+                    <option value="LEADER">Leader</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1 text-gray-700">
+                    Nilai Filter <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={feeFilterValue}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFeeFilterValue(e.target.value)}
+                    disabled={!feeFilterType}
+                    required
+                    className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">-- Pilih Nilai --</option>
+                    {feeFilterType === "AREA" &&
+                      uniqueAreasFinance.map((area: any, idx: number) => (
+                        <option key={idx} value={area}>
+                          {area}
+                        </option>
+                      ))}
+                    {feeFilterType === "LEADER" &&
+                      uniqueLeadersFinance.map((ldr: any, idx: number) => (
+                        <option key={idx} value={ldr}>
+                          {ldr}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-gray-700">
+                  File Excel (.xlsx / .xls) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="excel-fee-upload"
+                  type="file"
+                  accept=".xlsx, .xls"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFeeExcelFile(e.target.files?.[0] || null)}
+                  required
+                  className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1.5 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isUploadingFee}
+                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isUploadingFee ? "Mengunggah..." : "Upload File Fee Excel"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {currentView === "upload-konten" && (
+          <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+            <h2 className="text-lg font-semibold text-blue-600 mb-2">
+              Upload Konten Edukasi / Media
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Kelola dan unggah materi konten media pendukung operasional.
+            </p>
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              Modul Upload Konten siap dihubungkan dengan repositori media.
+            </div>
+          </div>
+        )}
 
         {currentView === "list-akun" && (
           <div className="bg-white rounded-xl shadow-sm p-6">
@@ -2670,7 +3388,7 @@ function DashboardContent() {
                   value={searchListAkun}
                   onChange={(e) => {
                     setSearchListAkun(e.target.value);
-                    setCurrentPageListAkun(1); // Reset ke halaman 1 saat mengetik pencarian
+                    setCurrentPageListAkun(1);
                   }}
                   placeholder="Cari nama, NIK, atau username..."
                   className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2746,7 +3464,6 @@ function DashboardContent() {
                 </tbody>
               </table>
             </div>
-            {/* Paging untuk List Akun */}
             <Pagination
               currentPage={currentPageListAkun}
               totalPages={totalPagesListAkun}
@@ -2797,10 +3514,11 @@ function DashboardContent() {
                   <input
                     type="text"
                     name="nik"
-                    defaultValue={selectedData?.nik || ""}
+                    value={nikValue}
+                    onChange={(e) => setNikValue(e.target.value)}
                     required
                     className="w-full p-2 bg-white text-gray-900 border border-gray-300 rounded-md"
-                    placeholder="NIK"
+                    placeholder="NIK (Contoh : TLM0001)"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -2812,7 +3530,7 @@ function DashboardContent() {
                       name="kanwil"
                       options={kanwilOptions}
                       value={selectedKanwil}
-                      onChange={(val) => {
+                      onChange={(val: any) => {
                         setSelectedKanwil(val);
                         setSelectedArea("");
                         setSelectedPenempatan("");
@@ -2820,6 +3538,7 @@ function DashboardContent() {
                       }}
                       placeholder="Pilih/ketik Kanwil..."
                       required={true}
+                      disabled={false}
                     />
                   </div>
                   <div>
@@ -2830,7 +3549,7 @@ function DashboardContent() {
                       name="area"
                       options={areaOptions}
                       value={selectedArea}
-                      onChange={(val) => {
+                      onChange={(val: any) => {
                         setSelectedArea(val);
                         setSelectedPenempatan("");
                         setSelectedLeader("");
@@ -2854,7 +3573,7 @@ function DashboardContent() {
                       name="penempatan"
                       options={penempatanOptions}
                       value={selectedPenempatan}
-                      onChange={(val) => {
+                      onChange={(val: any) => {
                         setSelectedPenempatan(val);
                         setSelectedLeader("");
                       }}
@@ -2874,7 +3593,7 @@ function DashboardContent() {
                     <select
                       name="leader"
                       value={selectedLeader}
-                      onChange={(e) => setSelectedLeader(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedLeader(e.target.value)}
                       required
                       className="w-full p-2 bg-white text-gray-900 border border-gray-300 rounded-md disabled:bg-gray-100"
                       disabled={!selectedPenempatan}
@@ -2893,7 +3612,7 @@ function DashboardContent() {
                       ))}
                       {selectedLeader &&
                         !filteredLeaders.some(
-                          (l) => l.nama_leader === selectedLeader,
+                          (l) => l.nama_leader === selectedLeader
                         ) && (
                           <option value={selectedLeader}>
                             {selectedLeader}
@@ -3020,7 +3739,6 @@ function DashboardContent() {
                     )}
                 </div>
 
-                {/* --- PENGAMAN AUTOCOMPLETE & BINDING DATA EDIT --- */}
                 <div className="space-y-4 pt-2 border-t border-gray-100">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3029,12 +3747,11 @@ function DashboardContent() {
                     <input
                       type="text"
                       name="username"
-                      // Tambahkan defaultValue agar data muncul saat Edit
-                      defaultValue={selectedData?.username || ""}
-                      autoComplete="off"
+                      value={nikValue}
+                      readOnly
                       required
-                      className="w-full p-2 bg-white text-gray-900 border border-gray-300 rounded-md"
-                      placeholder="Masukkan username"
+                      className="w-full p-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-md cursor-not-allowed font-mono"
+                      placeholder="Username otomatis NIK"
                     />
                   </div>
                   <div>
@@ -3042,7 +3759,7 @@ function DashboardContent() {
                       Password Akun
                       {currentView === "form-edit" && (
                         <span className="text-[10px] text-gray-400 ml-2">
-                          (Kosongkan jika tidak ingin mengubah)
+                          (Kosongkan jika tidak ubah)
                         </span>
                       )}
                     </label>
@@ -3052,7 +3769,6 @@ function DashboardContent() {
                       autoComplete="new-password"
                       readOnly
                       onFocus={(e) => e.target.removeAttribute("readOnly")}
-                      // Tidak perlu defaultValue untuk password saat edit karena password tidak boleh ditampilkan
                       required={currentView === "form-tambah"}
                       className="w-full p-2 bg-white text-gray-900 border border-gray-300 rounded-md"
                       placeholder={
@@ -3097,7 +3813,7 @@ function DashboardContent() {
                   value={searchPenutupanAkun}
                   onChange={(e) => {
                     setSearchPenutupanAkun(e.target.value);
-                    setCurrentPagePenutupanAkun(1); // Reset ke halaman 1 saat mengetik pencarian
+                    setCurrentPagePenutupanAkun(1);
                   }}
                   placeholder="Cari nama, NIK, atau username..."
                   className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -3146,7 +3862,7 @@ function DashboardContent() {
                             onClick={async () => {
                               if (
                                 confirm(
-                                  `Yakin ingin menutup/menghapus akun "${item.nama}"?`,
+                                  `Yakin ingin menutup/menghapus akun "${item.nama}"?`
                                 )
                               ) {
                                 try {
@@ -3158,7 +3874,7 @@ function DashboardContent() {
                                         "Content-Type": "application/json",
                                       },
                                       body: JSON.stringify({ id: item.id }),
-                                    },
+                                    }
                                   );
                                   const result = await res.json();
                                   if (result.success) {
@@ -3166,7 +3882,7 @@ function DashboardContent() {
                                     fetchFrontlineData();
                                   } else {
                                     alert(
-                                      result.message || "Gagal menutup akun.",
+                                      result.message || "Gagal menutup akun."
                                     );
                                   }
                                 } catch (err) {
@@ -3194,7 +3910,6 @@ function DashboardContent() {
                 </tbody>
               </table>
             </div>
-            {/* Paging untuk Penutupan Akun */}
             <Pagination
               currentPage={currentPagePenutupanAkun}
               totalPages={totalPagesPenutupanAkun}
@@ -3203,7 +3918,6 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* TAMPILAN LAPORAN & ADUAN KHUSUS SUPER ADMIN */}
         {currentView === "laporan-aduan" && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gray-800 p-5 flex justify-between items-center">
@@ -3250,7 +3964,7 @@ function DashboardContent() {
                                 day: "numeric",
                                 month: "short",
                                 year: "numeric",
-                              },
+                              }
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm font-semibold text-gray-800">
@@ -3290,8 +4004,7 @@ function DashboardContent() {
                         className="px-6 py-10 text-center text-gray-500"
                       >
                         <span className="text-3xl block mb-2">📬</span>
-                        Belum ada laporan atau aduan yang ditujukan untuk Super
-                        Admin.
+                        Belum ada laporan atau aduan yang ditujukan untuk Super Admin.
                       </td>
                     </tr>
                   )}
@@ -3321,7 +4034,7 @@ function DashboardContent() {
               onClick={async () => {
                 if (
                   confirm(
-                    "Apakah Anda yakin ingin mengosongkan data perkiraan pemasukan dan transaksi gaji sekarang?",
+                    "Apakah Anda yakin ingin mengosongkan data perkiraan pemasukan dan transaksi gaji sekarang?"
                   )
                 ) {
                   try {
@@ -3349,7 +4062,6 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* MODAL BACA & BALAS LAPORAN */}
         {selectedLaporan && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
@@ -3449,12 +4161,11 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* VIEW: FORM PEMBUATAN AKUN NON-FRONTING KONSOLIDASI */}
         {currentView === "create-non-fronting" && (
-          <div className="bg-white rounded-xl shadow-sm p-6 max-w-5xl mx-auto">
+          <div className="bg-white rounded-xl shadow-sm p-6 max-w-5xl mx-auto border border-gray-100">
             <div className="mb-6 border-b pb-4">
               <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide">
-                DATA PEGAWAI PT TRAYA LANGGENG MANDIRI
+                DATA PEGAWAI NON-FRONTING
               </h2>
               <p className="text-sm text-gray-500">
                 Registrasi akun Non-Fronting Terpusat
@@ -3466,8 +4177,7 @@ function DashboardContent() {
               className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6"
               autoComplete="off"
             >
-              {/* KOLOM KIRI */}
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
                     NAMA LENGKAP PEGAWAI <span className="text-red-500">*</span>
@@ -3485,8 +4195,7 @@ function DashboardContent() {
                     NIK KTP <span className="text-red-500">*</span>
                   </label>
                   <p className="text-[10px] text-gray-500 mb-1 italic">
-                    Harap mengisi dengan 16 digit angka pada nomor induk
-                    kependudukan
+                    Nomor Induk Kependudukan (16 digit)
                   </p>
                   <input
                     type="text"
@@ -3527,8 +4236,7 @@ function DashboardContent() {
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
-                    ALAMAT AREA PENEMPATAN{" "}
-                    <span className="text-red-500">*</span>
+                    ALAMAT AREA PENEMPATAN <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -3560,11 +4268,16 @@ function DashboardContent() {
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       GOLONGAN DARAH
                     </label>
-                    <input
-                      type="text"
+                    <select
                       name="golongan_darah"
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="">-- Pilih Gol --</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="AB">AB</option>
+                      <option value="O">O</option>
+                    </select>
                   </div>
                 </div>
 
@@ -3576,7 +4289,7 @@ function DashboardContent() {
                     name="jabatan"
                     required
                     value={jabatanNonFronting}
-                    onChange={(e) => setJabatanNonFronting(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setJabatanNonFronting(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">-- Pilih Jabatan --</option>
@@ -3584,107 +4297,28 @@ function DashboardContent() {
                     <option value="PEGAWAI">PEGAWAI</option>
                   </select>
                 </div>
-
-                {/* LOGIKA KONDISIONAL DIMULAI DI SINI */}
-                {jabatanNonFronting === "PEGAWAI" && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        SUPERVISOR <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="supervisor"
-                        required
-                        className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">-- Pilih Supervisor --</option>
-                        {(() => {
-                          // Filter data secara aman (hapus spasi, ubah ke kapital)
-                          const spvList = nonFrontingList.filter((item) => {
-                            const jab = (item.jabatan || "")
-                              .trim()
-                              .toLowerCase();
-                            return jab === "supervisor" || jab === "spv";
-                          });
-
-                          // Jika ternyata belum ada data SPV di database
-                          if (spvList.length === 0) {
-                            return (
-                              <option value="" disabled>
-                                ⚠ Belum ada data Supervisor di database
-                              </option>
-                            );
-                          }
-
-                          // Jika ada, tampilkan listnya
-                          return spvList.map((spv) => (
-                            <option key={spv.id} value={spv.nama}>
-                              {spv.nama} -{" "}
-                              {spv.area_penempatan || spv.unit_kerja}
-                            </option>
-                          ));
-                        })()}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        UNIT KERJA <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="unit_kerja"
-                        required
-                        className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">-- Pilih Unit Kerja --</option>
-                        {unitKerjaOptions.map((unit) => (
-                          <option key={unit.id} value={unit.nama_unit}>
-                            {unit.nama_unit}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
               </div>
 
-              {/* KOLOM KANAN */}
-              <div className="space-y-5">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      MASA KERJA <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="masa_kerja"
-                      required
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      MASA KONTRAK
-                    </label>
-                    <input
-                      type="text"
-                      name="masa_kontrak"
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    UNIT KERJA <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="unit_kerja"
+                    required
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Unit Kerja --</option>
+                    {unitKerjaOptions.map((unit: any) => (
+                      <option key={unit.id} value={unit.nama_unit}>
+                        {unit.nama_unit}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      TANGGAL MULAI KERJA
-                    </label>
-                    <input
-                      type="date"
-                      name="tanggal_mulai_kerja"
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       TANGGAL LAHIR <span className="text-red-500">*</span>
@@ -3693,9 +4327,370 @@ function DashboardContent() {
                       type="date"
                       name="tanggal_lahir"
                       required
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      TGL MULAI KERJA <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      name="tanggal_mulai_kerja"
+                      required
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    UPLOAD PAS FOTO (JPG/PNG) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="file"
+                    name="pas_foto"
+                    accept=".jpg, .jpeg, .png"
+                    required
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      if (e.target.files && e.target.files[0]) setPasFotoName(e.target.files[0].name);
+                    }}
+                    className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-100 file:text-blue-700"
+                  />
+                  {pasFotoName && <p className="text-xs text-green-600 mt-1">File: {pasFotoName}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    UPLOAD SURAT TUGAS (PDF/JPG/PNG) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="file"
+                    name="surat_tugas"
+                    accept=".pdf, .jpg, .jpeg, .png"
+                    required
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      if (e.target.files && e.target.files[0]) setSuratTugasName(e.target.files[0].name);
+                    }}
+                    className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-100 file:text-blue-700"
+                  />
+                  {suratTugasName && <p className="text-xs text-green-600 mt-1">File: {suratTugasName}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      USERNAME AKUN <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="username"
+                      required
+                      placeholder="Username..."
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      PASSWORD AKUN <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      required
+                      placeholder="Password..."
                       className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? "Menyimpan Data..." : "Simpan Data Non-Fronting"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {currentView === "list-unit-kerja" && (
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-blue-600">
+                  Data Pegawai Unit Kerja: {selectedUnitKerja || "Semua"}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Daftar akun pegawai non-fronting terdaftar pada unit kerja ini.
+                </p>
+              </div>
+              <input
+                type="text"
+                value={searchNonFronting}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchNonFronting(e.target.value)}
+                placeholder="Cari nama, NIK, atau username..."
+                className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap border-collapse">
+                <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+                  <tr>
+                    <th className="px-6 py-4">No</th>
+                    <th className="px-6 py-4">Nama / NIK</th>
+                    <th className="px-6 py-4">Jabatan</th>
+                    <th className="px-6 py-4">Penempatan</th>
+                    <th className="px-6 py-4">Berkas</th>
+                    <th className="px-6 py-4 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
+                  {filteredNonFrontingByUnit.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                        Belum ada data pegawai untuk unit kerja ini.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredNonFrontingByUnit.map((item: any, index: number) => (
+                      <tr key={item.id || index} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="px-6 py-4 text-center font-medium">{index + 1}</td>
+                        <td className="px-6 py-4 font-semibold text-gray-900">
+                          <div>{item.nama}</div>
+                          <div className="text-xs text-gray-400 font-mono">{item.nik}</div>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-xs">
+                          <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md">
+                            {item.jabatan || "PEGAWAI"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">
+                          <div>{item.area_penempatan || "-"}</div>
+                          <div className="text-xs text-gray-400">{item.alamat_area_penempatan || "-"}</div>
+                        </td>
+                        <td className="px-6 py-4 text-xs">
+                          {item.pas_foto && (
+                            <a
+                              href={`/uploads/pas_foto/${item.pas_foto}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline block"
+                            >
+                              📷 Pas Foto
+                            </a>
+                          )}
+                          {item.surat_tugas && (
+                            <a
+                              href={`/uploads/surat_tugas/${item.surat_tugas}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-purple-600 hover:underline block mt-0.5"
+                            >
+                              📄 Surat Tugas
+                            </a>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleEditNonFronting(item)}
+                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs mr-2"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleNonAktifkanPegawai(item.id, item.nama)}
+                            className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs"
+                          >
+                            Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {currentView === "edit-non-fronting" && editFormData && (
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 max-w-5xl mx-auto">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b">
+              <div>
+                <h2 className="text-xl font-bold text-blue-600">
+                  Edit Data Pegawai: {editFormData.nama || "-"}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  NIK: <b>{editFormData.nik || "-"}</b> | Username: <b>{editFormData.username || "-"}</b>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedData(null);
+                  setEditFormData(null);
+                  setCurrentView("list-unit-kerja");
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+              >
+                ← Kembali ke Daftar Pegawai
+              </button>
+            </div>
+
+            {successMessage && (
+              <div className="mb-4 p-3 bg-green-100 border border-green-300 text-green-700 rounded-lg text-sm font-semibold">
+                {successMessage}
+              </div>
+            )}
+
+            {errorMessage && (
+              <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm font-semibold">
+                {errorMessage}
+              </div>
+            )}
+
+            <form onSubmit={handleEditNonFrontingSubmit} className="space-y-4">
+              {/* BARIS 1: NAMA, NIK, USERNAME */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    NAMA LENGKAP <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="nama"
+                    required
+                    value={editFormData.nama || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, nama: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    NIK <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="nik"
+                    required
+                    value={editFormData.nik || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, nik: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    USERNAME LOGIN
+                  </label>
+                  <input
+                    type="text"
+                    name="username"
+                    readOnly
+                    value={editFormData.username || ""}
+                    className="w-full p-2.5 bg-gray-200 text-gray-600 border border-gray-300 rounded-md text-sm font-mono cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              {/* BARIS 2: MITRA, UNIT KERJA, JABATAN */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    MITRA TERDAFTAR
+                  </label>
+                  <select
+                    name="id_mitra"
+                    value={editFormData.id_mitra || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, id_mitra: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Mitra Terdaftar --</option>
+                    {mitraOptions.map((mitra: any) => (
+                      <option key={mitra.id} value={mitra.id}>
+                        {mitra.kode_mitra} - {mitra.nama_mitra}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/*<div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    UNIT KERJA <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="unit_kerja"
+                    required
+                    value={editFormData.unit_kerja || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, unit_kerja: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Unit Kerja --</option>
+                    {unitKerjaOptions.map((u: any) => (
+                      <option key={u.id} value={u.nama_unit}>
+                        {u.nama_unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>*/}
+
+                {/*<div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    JABATAN <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="jabatan"
+                    required
+                    value={editFormData.jabatan || "PEGAWAI"}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, jabatan: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PEGAWAI">PEGAWAI</option>
+                    <option value="SUPERVISOR">SUPERVISOR</option>
+                  </select>
+                </div>*/}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    JABATAN <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="jabatan"
+                    required
+                    value={editJabatan}
+                    onChange={handleEditJabatanChange}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PEGAWAI">PEGAWAI</option>
+                    <option value="SUPERVISOR">SUPERVISOR</option>
+                  </select>
+                </div>
+
+              </div>
+
+              {/* BARIS 3: JENIS KELAMIN, TEMPAT LAHIR, TANGGAL LAHIR */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    JENIS KELAMIN <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="jenis_kelamin"
+                    required
+                    value={editFormData.jenis_kelamin || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, jenis_kelamin: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Jenis Kelamin --</option>
+                    <option value="LAKI - LAKI">LAKI - LAKI</option>
+                    <option value="PEREMPUAN">PEREMPUAN</option>
+                  </select>
                 </div>
 
                 <div>
@@ -3706,442 +4701,408 @@ function DashboardContent() {
                     type="text"
                     name="tempat_lahir"
                     required
-                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editFormData.tempat_lahir || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, tempat_lahir: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
-                    DOMISILI SAAT INI <span className="text-red-500">*</span>
+                    TANGGAL LAHIR <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    name="tanggal_lahir"
+                    required
+                    value={editFormData.tanggal_lahir || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, tanggal_lahir: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* BARIS 4: EMAIL, NO WHATSAPP, DOMISILI */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    EMAIL <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    required
+                    value={editFormData.email || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    NO. WHATSAPP <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="no_whatsapp"
+                    required
+                    value={editFormData.no_whatsapp || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, no_whatsapp: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    DOMISILI <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     name="domisili"
                     required
-                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editFormData.domisili || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, domisili: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* BARIS 5: STATUS PERNIKAHAN, GOLONGAN DARAH, SUPERVISOR */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    STATUS PERNIKAHAN <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="status_pernikahan"
+                    required
+                    value={editFormData.status_pernikahan || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, status_pernikahan: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Status --</option>
+                    <option value="LAJANG">LAJANG</option>
+                    <option value="NIKAH">NIKAH</option>
+                    <option value="CERAI">CERAI</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    GOLONGAN DARAH
+                  </label>
+                  <select
+                    name="golongan_darah"
+                    value={editFormData.golongan_darah || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, golongan_darah: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Gol. Darah --</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="AB">AB</option>
+                    <option value="O">O</option>
+                  </select>
+                </div>
+
+                {/*<div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    SUPERVISOR
+                  </label>
+                  <input
+                    type="text"
+                    name="supervisor"
+                    value={editFormData.supervisor || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, supervisor: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>*/}
+                {/* ========================================== */}
+                {/* SUPERVISOR DROPDOWN (HILANG JIKA SUPERVISOR) */}
+                {/* ========================================== */}
+                {editJabatan.toUpperCase() !== "SUPERVISOR" && (
+                <>
+                  {/* SUPERVISOR DROPDOWN */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      SUPERVISOR <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      name="supervisor"
+                      required={editJabatan.toUpperCase() !== "SUPERVISOR"}
+                      value={editSupervisor}
+                      onChange={(e) => setEditSupervisor(e.target.value)}
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- Pilih Supervisor --</option>
+                      {(() => {
+                        const spvList = nonFrontingList.filter((item: any) => {
+                          const jab = (item.jabatan || "").trim().toLowerCase();
+                          return jab === "supervisor" || jab === "spv";
+                        });
+
+                        if (spvList.length === 0) {
+                          return (
+                            <option value="" disabled>
+                              ⚠ Belum ada data Supervisor di database
+                            </option>
+                          );
+                        }
+
+                        return spvList.map((spv: any) => (
+                          <option key={spv.id} value={spv.nama}>
+                            {spv.nama} - {spv.area_penempatan || spv.unit_kerja}
+                          </option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
+
+                  {/* UNIT KERJA DROPDOWN */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      UNIT KERJA <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      name="unit_kerja"
+                      required={editJabatan.toUpperCase() !== "SUPERVISOR"}
+                      defaultValue={editFormData?.unit_kerja || ""}
+                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- Pilih Unit Kerja --</option>
+                      {unitKerjaOptions.map((unit: any) => (
+                        <option key={unit.id} value={unit.nama_unit}>
+                          {unit.nama_unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+              </div>
+
+              {/* BARIS 6: AREA PENEMPATAN & ALAMAT AREA PENEMPATAN */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    AREA PENEMPATAN <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="area_penempatan"
+                    required
+                    value={editFormData.area_penempatan || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, area_penempatan: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      NO WHATSAPP <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="no_whatsapp"
-                      required
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      EMAIL <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                    <label className="block text-xs font-bold text-gray-700 mb-2">
-                      PAS FOTO <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="file"
-                      name="pas_foto"
-                      accept="image/*"
-                      onChange={handlePasFotoChange}
-                      required
-                      className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
-                    />
-                    {pasFotoName && (
-                      <p className="mt-2 text-[10px] text-green-700 font-bold truncate">
-                        ✓ {pasFotoName}
-                      </p>
-                    )}
-                  </div>
-                  <div className="bg-red-50/50 p-3 rounded-lg border border-red-100">
-                    <label className="block text-xs font-bold text-gray-700 mb-2">
-                      SURAT TUGAS <span className="text-red-500">*</span>
-                    </label>
-                    <p className="text-[9px] text-gray-500 italic mb-2">
-                      Harap upload file pdf
-                    </p>
-                    <input
-                      type="file"
-                      name="surat_tugas"
-                      accept=".pdf"
-                      onChange={handleSuratTugasChangeNonFronting}
-                      required
-                      className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-red-600 file:text-white hover:file:bg-red-700 cursor-pointer"
-                    />
-                    {suratTugasName && (
-                      <p className="mt-2 text-[10px] text-green-700 font-bold truncate">
-                        ✓ {suratTugasName}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      USERNAME LOGIN <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="username"
-                      autoComplete="off"
-                      required
-                      className="w-full p-2.5 bg-gray-100 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-gray-400 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      PASSWORD LOGIN <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="password"
-                      name="password"
-                      autoComplete="new-password"
-                      required
-                      className="w-full p-2.5 bg-gray-100 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-gray-400 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? "Menyimpan..." : "Submit Form Pegawai"}
-                  </button>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    ALAMAT AREA PENEMPATAN <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="alamat_area_penempatan"
+                    required
+                    value={editFormData.alamat_area_penempatan || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, alamat_area_penempatan: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
               </div>
-            </form>
-          </div>
-        )}
 
-        {/* VIEW: LIST PEGAWAI NON-FRONTING PER KATEGORI */}
-        {["list-security", "list-obcs", "list-teknisi"].includes(currentView) &&
-          (() => {
-            const filteredList = nonFrontingList.filter((item) => {
-              // Filter Berdasarkan Unit Kerja Menu
-              let matchRole = false;
-              if (currentView === "list-security")
-                matchRole = ["SECURITY", "DRIVER"].includes(item.unit_kerja);
-              if (currentView === "list-obcs")
-                matchRole = [
-                  "OFFICE BOY",
-                  "CS ( CLEANING SERVICE)",
-                  "RESEPSIONIS",
-                ].includes(item.unit_kerja);
-              if (currentView === "list-teknisi")
-                matchRole = ["TEKNISI"].includes(item.unit_kerja);
-
-              // Pencarian Teks
-              if (searchNonFronting) {
-                const kw = searchNonFronting.toLowerCase();
-                return (
-                  matchRole &&
-                  (item.nama.toLowerCase().includes(kw) ||
-                    item.nik.toLowerCase().includes(kw))
-                );
-              }
-              return matchRole;
-            });
-
-            return (
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h2 className="text-lg font-semibold text-blue-600">
-                      Data Pegawai -{" "}
-                      {currentView === "list-security"
-                        ? "Security & Driver"
-                        : currentView === "list-obcs"
-                          ? "OB, CS & Resepsionis"
-                          : "Teknisi"}
-                    </h2>
-                  </div>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={searchNonFronting}
-                      onChange={(e) => setSearchNonFronting(e.target.value)}
-                      placeholder="Cari nama atau NIK..."
-                      className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      onClick={fetchNonFrontingData}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
-                    >
-                      🔄 Reload
-                    </button>
-                  </div>
+              {/* BARIS 7: MASA KERJA, TANGGAL MULAI KERJA, MASA KONTRAK */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    MASA KERJA <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="masa_kerja"
+                    required
+                    value={editFormData.masa_kerja || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, masa_kerja: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">
-                          Nama Lengkap
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">
-                          NIK
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">
-                          Unit / Area
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">
-                          Username Login
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredList.length > 0 ? (
-                        filteredList.map((item) => (
-                          <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                              {item.nama}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {item.nik}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              <span className="font-semibold text-gray-800">
-                                {item.unit_kerja}
-                              </span>
-                              <br />
-                              <span className="text-xs text-gray-500">
-                                {item.area_penempatan}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm font-bold text-blue-600">
-                              {item.username}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="px-6 py-8 text-center text-sm text-gray-500"
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    TANGGAL MULAI KERJA
+                  </label>
+                  <input
+                    type="date"
+                    name="tanggal_mulai_kerja"
+                    value={editFormData.tanggal_mulai_kerja || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, tanggal_mulai_kerja: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    MASA KONTRAK
+                  </label>
+                  <input
+                    type="text"
+                    name="masa_kontrak"
+                    value={editFormData.masa_kontrak || ""}
+                    onChange={(e: any) => setEditFormData({ ...editFormData, masa_kontrak: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* BARIS 8: FILE UPLOAD & PASSWORD (OPSIONAL) */}
+              {/* SECTION DOKUMEN & KREDENSIAL (PAS FOTO, SURAT TUGAS, PASSWORD) */}
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4 mt-6">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    📂 Dokumen Pegawai & Kredensial
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    * Kosongkan input file / password jika tidak ingin merubahnya
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* 1. PAS FOTO */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-gray-700">
+                      PAS FOTO PEGAWAI
+                    </label>
+                    
+                    {/* Preview Foto Saat Ini */}
+                    {editFormData.pas_foto ? (
+                      <div className="flex items-center gap-3 p-2 bg-white border border-gray-200 rounded-lg">
+                        <img
+                          src={getFileUrl(editFormData.pas_foto, "pas_foto")}
+                          alt="Pas Foto Pegawai"
+                          className="w-12 h-14 object-cover rounded-md border border-gray-300 shadow-sm"
+                        />
+                        <div className="overflow-hidden">
+                          <p className="text-[11px] font-semibold text-gray-700 truncate">
+                            Foto Saat Ini
+                          </p>
+                          <a
+                            href={getFileUrl(editFormData.pas_foto, "pas_foto")}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-600 hover:underline font-medium"
                           >
-                            Tidak ada data pegawai di unit ini.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                            🔍 Lihat Foto Ukuran Penuh
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">Belum ada foto</p>
+                    )}
+
+                    {/* Input Unggah Foto Baru */}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">
+                        Ganti Pas Foto (JPG/PNG):
+                      </label>
+                      <input
+                        type="file"
+                        name="pas_foto"
+                        accept="image/*"
+                        className="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. SURAT TUGAS (PDF) */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-gray-700">
+                      SURAT TUGAS (PDF)
+                    </label>
+                    
+                    {/* Link Dokumen PDF Saat Ini */}
+                    {editFormData.surat_tugas ? (
+                      <div className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="text-xl">📄</span>
+                          <div className="overflow-hidden">
+                            <p className="text-[11px] font-semibold text-gray-800 truncate">
+                              Dokumen Surat Tugas
+                            </p>
+                            <span className="text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded">
+                              PDF Terunggah
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={getFileUrl(editFormData.surat_tugas, "surat_tugas")}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[11px] font-bold rounded transition-colors whitespace-nowrap"
+                        >
+                          Buka PDF ↗
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">Belum ada dokumen PDF</p>
+                    )}
+
+                    {/* Input Unggah PDF Baru */}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">
+                        Ganti Surat Tugas (PDF):
+                      </label>
+                      <input
+                        type="file"
+                        name="surat_tugas"
+                        accept=".pdf"
+                        className="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. UBAH PASSWORD */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-gray-700">
+                      KREDENSIAL LOGIN
+                    </label>
+                    <div className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                      <label className="block text-[11px] font-medium text-gray-600">
+                        Ubah Password (Opsional):
+                      </label>
+                      <input
+                        type="password"
+                        name="password"
+                        placeholder="Biarkan kosong jika tidak diubah"
+                        className="w-full p-2 bg-gray-50 text-gray-900 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-            );
-          })()}
 
-        {currentView === "upload-qna" && (
-          <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
-            <h2 className="text-lg font-semibold text-blue-600 mb-4">
-              Upload Materi QnA Baru
-            </h2>
-            <form onSubmit={handleQnaSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Judul Materi
-                </label>
-                <input
-                  type="text"
-                  name="judul"
-                  required
-                  // Penambahan warna teks dan placeholder
-                  className="w-full p-2.5 border border-gray-300 rounded-md bg-gray-50 text-gray-900 placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="Masukkan judul QnA..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Kategori
-                </label>
-                <select
-                  name="kategori"
-                  required
-                  // Penambahan warna teks
-                  className="w-full p-2.5 border border-gray-300 rounded-md bg-gray-50 text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              {/* TOMBOL SIMPAN & BATAL */}
+              <div className="pt-4 flex justify-end gap-3 border-t mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedData(null);
+                    setEditFormData(null);
+                    setCurrentView("list-unit-kerja");
+                  }}
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
                 >
-                  <option value="" className="text-gray-500">
-                    Pilih Kategori...
-                  </option>
-                  <option value="Produk">Produk</option>
-                  <option value="Promo">Promo / Campaign</option>
-                  <option value="Sistem">Sistem / Kendala Teknis</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Deskripsi Tambahan
-                </label>
-                <textarea
-                  name="deskripsi"
-                  rows={3}
-                  // Penambahan warna teks dan placeholder
-                  className="w-full p-2.5 border border-gray-300 rounded-md bg-gray-50 text-gray-900 placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="Catatan tambahan (opsional)..."
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  File Dokumen
-                </label>
-                <input
-                  type="file"
-                  name="qna_file"
-                  onChange={handleQnaFileChange}
-                  required
-                  // Penambahan warna agar tombol file-nya terlihat rapi
-                  className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
-                />
-                {qnaFileName && (
-                  <p className="mt-1 text-xs text-green-600 font-medium">
-                    File terpilih: {qnaFileName}
-                  </p>
-                )}
-              </div>
-
-              <div className="pt-2">
+                  Batal
+                </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                  {isLoading ? "Mengunggah..." : "📤 Upload Materi QnA"}
+                  {isLoading ? "Menyimpan Perubahan..." : "Simpan Perubahan Pegawai"}
                 </button>
               </div>
             </form>
-          </div>
-        )}
-
-        {/* VIEW: UPLOAD JUMLAH FEE PRIBADI */}
-        {currentView === "upload-fee" && (
-          <div className="space-y-6 max-w-4xl">
-            <h2 className="text-2xl font-bold text-gray-800">
-              Upload Jumlah Fee Pribadi
-            </h2>
-            <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <select
-                  value={feeFilterType}
-                  onChange={(e) => {
-                    setFeeFilterType(e.target.value);
-                    setFeeFilterValue(""); // Reset pilihan target jika filter berubah
-                  }}
-                  className="p-2 border border-gray-300 rounded text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">-- Pilih Kategori Filter --</option>
-                  <option value="area">Area Tertentu</option>
-                  <option value="pegawai">Per Spesifik Pegawai</option>
-                  <option value="leader">Leader Tertentu</option>
-                </select>
-
-                <select
-                  value={feeFilterValue}
-                  onChange={(e) => setFeeFilterValue(e.target.value)}
-                  disabled={!feeFilterType}
-                  className="p-2 border border-gray-300 rounded text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                >
-                  <option value="">-- Pilih Target --</option>
-                  {feeFilterType === "area" &&
-                    uniqueAreasFinance.map((a, i) => (
-                      <option key={i} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  {feeFilterType === "pegawai" &&
-                    frontlineList.map((emp) => (
-                      <option key={emp.id} value={emp.nik}>
-                        {emp.nama} ({emp.nik})
-                      </option>
-                    ))}
-                  {feeFilterType === "leader" &&
-                    uniqueLeadersFinance.map((l, i) => (
-                      <option key={i} value={l}>
-                        {l}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <input
-                id="excel-fee-upload"
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={(e) =>
-                  e.target.files && setFeeExcelFile(e.target.files[0])
-                }
-                className="text-sm w-full block cursor-pointer file:cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-
-              <button
-                onClick={handleUploadFee}
-                disabled={!feeExcelFile || isUploadingFee}
-                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isUploadingFee ? "Memproses..." : "Simpan ke Database"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {currentView !== "welcome" &&
-          currentView !== "list-akun" &&
-          currentView !== "form-tambah" &&
-          currentView !== "form-edit" &&
-          currentView !== "upload-qna" &&
-          currentView !== "penutupan-akun" &&
-          currentView !== "upload-produk" &&
-          currentView !== "pengumuman" &&
-          currentView !== "create-leader" &&
-          currentView !== "upload-fee" &&
-          currentView !== "laporan-aduan" &&
-          currentView !== "create-non-fronting" &&
-          currentView !== "list-security" &&
-          currentView !== "list-obcs" &&
-          currentView !== "list-teknisi" && (
-            <div className="bg-white rounded-xl shadow-sm p-10 text-center">
-              <h3 className="text-xl font-bold text-gray-700 mb-2">
-                Halaman Menu: {currentView.replace("-", " ").toUpperCase()}
-              </h3>
-              <p className="text-gray-500 mb-6">
-                Modul untuk menu ini sedang dipersiapkan.
-              </p>
-              <button
-                onClick={() => setCurrentView("welcome")}
-                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors text-sm font-semibold"
-              >
-                Kembali ke Beranda
-              </button>
-            </div>
-          )}
-
-        {successMessage && (
-          <div className="fixed bottom-5 right-5 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 shadow-lg z-50">
-            ✅ {successMessage}
-          </div>
-        )}
-        {errorMessage && (
-          <div className="fixed bottom-5 right-5 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 shadow-lg z-50">
-            ❌ {errorMessage}
           </div>
         )}
       </div>
@@ -4149,6 +5110,13 @@ function DashboardContent() {
   );
 }
 
-export default function SuperAdminDashboard() {
-  return <DashboardContent />;
+// ==========================================
+// 6. DEFAULT EXPORT PAGE WRAPPER
+// ==========================================
+export default function SuperAdminPage() {
+  return (
+    <SessionProvider>
+      <DashboardContent />
+    </SessionProvider>
+  );
 }

@@ -31,8 +31,11 @@ export async function POST(req) {
     const tanggal_lahir = formData.get('tanggal_lahir');
     const no_whatsapp = formData.get('no_whatsapp');
     const username = formData.get('username');
-    const supervisor = formData.get('supervisor') || null;
+    const supervisorInput = formData.get('supervisor') || null;
     const plainPassword = formData.get('password'); // Password asli dari input form
+    
+    // Pemetaan Data Mitra Terdaftar
+    const id_mitra = formData.get('id_mitra') || null;
 
     const pasFoto = formData.get('pas_foto');
     const suratTugas = formData.get('surat_tugas');
@@ -44,7 +47,7 @@ export async function POST(req) {
       );
     }
 
-    // -- 2. ENCRYPT PASSWORD MENGGUNAKAN BCRYPT --
+    // -- ENCRYPT PASSWORD MENGGUNAKAN BCRYPT --
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(plainPassword, saltRounds);
 
@@ -53,7 +56,7 @@ export async function POST(req) {
     if (pasFoto instanceof File && pasFoto.size > 0) {
       const stored = await storeFileUpload({
         file: pasFoto,
-        folder: 'pas_foto',
+        folder: 'non-fronting/pas_foto',
         localFileName: `FOTO_${Date.now()}_${nik}_${pasFoto.name.replace(/\s+/g, '_')}`,
       });
       uploads.push(stored);
@@ -65,14 +68,14 @@ export async function POST(req) {
     if (suratTugas instanceof File && suratTugas.size > 0) {
       const stored = await storeFileUpload({
         file: suratTugas,
-        folder: 'surat_tugas',
+        folder: 'non-fronting/surat_tugas',
         localFileName: `ST_${Date.now()}_${nik}_${suratTugas.name.replace(/\s+/g, '_')}`,
       });
       uploads.push(stored);
       stName = stored.reference;
     }
 
-    // Tentukan role login berdasarkan Unit Kerja
+    // Tentukan role login berdasarkan Unit Kerja / Jabatan
     let loginRole = '';
     let insertJabatan = '';
     if (jabatan === 'SPV') {
@@ -82,10 +85,6 @@ export async function POST(req) {
       loginRole = 'pegawai';
       insertJabatan = 'non-fronting';
     }
-    
-    /*if (['SECURITY', 'DRIVER'].includes(unit_kerja)) insertJabatan = 'security';
-    if (['OFFICE BOY', 'CS ( CLEANING SERVICE)'].includes(unit_kerja)) insertJabatan = 'obcs';
-    if (['TEKNISI'].includes(unit_kerja)) insertJabatan = 'teknisi';*/
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -100,18 +99,41 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: 'Username sudah digunakan!' }, { status: 400 });
     }
 
+    // 2. Ambil Username Supervisor (Jika jabatan bukan Supervisor/SPV)
+    let finalSupervisorUsername = null;
+    if (!isSpvRole && supervisorInput) {
+      const [spvRows] = await connection.query(
+        `SELECT username FROM data_non_fronting 
+         WHERE (username = ? OR nama = ? OR id = ?) 
+           AND (LOWER(jabatan) = 'supervisor' OR LOWER(jabatan) = 'spv') 
+         LIMIT 1`,
+        [supervisorInput, supervisorInput, supervisorInput]
+      );
+
+      if (spvRows.length > 0) {
+        finalSupervisorUsername = spvRows[0].username;
+      } else {
+        finalSupervisorUsername = supervisorInput; // Fallback jika input sudah berupa username
+      }
+    }
+
     // 2. Simpan Kredensial Login
     await connection.query(
       `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, ?, ?)`,
       [username, hashedPassword, insertJabatan, loginRole]
     );
 
-    // 3. Simpan Profil Lengkap
+    // 3. Simpan Profil Lengkap (Termasuk id_mitra)
     await connection.query(
       `INSERT INTO data_non_fronting 
-      (nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, pas_foto, surat_tugas, username, password, supervisor) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, fotoName, stName, username, hashedPassword, supervisor]
+      (nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, pas_foto, surat_tugas, username, password, supervisor, id_mitra) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        nama, nik, unit_kerja, jenis_kelamin, area_penempatan, alamat_area_penempatan, 
+        status_pernikahan, golongan_darah, masa_kerja, tanggal_mulai_kerja, masa_kontrak, 
+        jabatan, domisili, email, tempat_lahir, tanggal_lahir, no_whatsapp, 
+        fotoName, stName, username, hashedPassword, finalSupervisorUsername, id_mitra
+      ]
     );
 
     await connection.commit();
@@ -119,7 +141,6 @@ export async function POST(req) {
 
     // --- KIRIM EMAIL PEMBERITAHUAN KE PEGAWAI ---
     if (email) {
-      // Mengirim email secara异步 (tidak memblokir respons sukses jika terjadi jeda jaringan)
       sendAccountNotification(email, nama, username, plainPassword, unit_kerja).catch(err => {
         console.error("Background email error:", err);
       });

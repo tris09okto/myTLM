@@ -56,23 +56,30 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Ekstrak ekstensi dan simpan ke Cloudinary
+    // 3. Ekstrak ekstensi dan simpan ke Storage / Cloudinary
     const subtype = /^data:image\/([A-Za-z0-9.+-]+);/.exec(urlFile)?.[1] ?? "img";
     const extension = subtype === "jpeg" ? "jpg" : subtype.split("+")[0].replace(/[^a-zA-Z0-9]/g, "") || "img";
 
-    // Nilai folder diubah menjadi "absensi" agar sesuai dengan tipe di @/lib/uploads
-    upload = await storeImageDataUrl({
-      dataUrl: urlFile,
-      folder: "pegawai/absensi" as any,
-      localFileName: `absen_${nik}_${jenis_absen}_${Date.now()}.${extension}`,
-    });
+    try {
+      upload = await storeImageDataUrl({
+        dataUrl: urlFile,
+        folder: "pegawai/absensi" as any,
+        localFileName: `absen_${nik}_${jenis_absen}_${Date.now()}.${extension}`,
+      });
+    } catch (uploadErr: any) {
+      console.error("Gagal upload foto absensi:", uploadErr);
+      return NextResponse.json({
+        success: false,
+        error: "Gagal menyimpan foto absensi. Pastikan koneksi stabil dan ukuran file tidak terlalu besar."
+      }, { status: 500 });
+    }
 
     const fotoReference = upload.reference;
 
     // 4. Format Lokasi Gabungan
     let lokasiGabungan = 'Kantor / Lapangan';
     if (latitude && longitude && lokasi_alamat) {
-      lokasiGabungan = `${latitude},${longitude} - ${lokasi_alamat}`;
+      lokasiGabungan = `${latitude},${longitude}\n${lokasi_alamat}`;
     }
 
     // 5. Transaksi Database
@@ -81,16 +88,21 @@ export async function POST(req: Request) {
     try {
       await connection.beginTransaction();
 
-      // A. Ambil data supervisor pegawai
+      // A. Ambil data pegawai beserta supervisor & jabatan/unit_kerja (tanpa kolom role)
       const [pegawaiRows] = await connection.query(
         `SELECT 
+          p.nik,
+          p.nama,
+          p.jabatan,
+          p.unit_kerja,
+          p.supervisor,
           COALESCE(s.username, p.supervisor) AS supervisor_username,
-          s.nama AS nama_supervisor 
+          COALESCE(s.nama, p.supervisor) AS nama_supervisor 
         FROM data_non_fronting p
-        LEFT JOIN data_non_fronting s ON p.supervisor = s.username OR p.supervisor = s.nama
-        WHERE p.nik = ? 
+        LEFT JOIN data_non_fronting s ON (p.supervisor = s.username OR p.supervisor = s.nama)
+        WHERE p.nik = ? OR p.username = ?
         LIMIT 1`,
-        [nik]
+        [nik, nik]
       ) as [any[], any];
 
       if (pegawaiRows.length === 0) {
@@ -99,13 +111,34 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'Data pegawai tidak ditemukan dalam sistem.' }, { status: 404 });
       }
 
-      const supervisorUsername = pegawaiRows[0].supervisor_username;
-      const namaSupervisor = pegawaiRows[0].nama_supervisor;
+      const pegawaiData = pegawaiRows[0];
+      let supervisorUsername = pegawaiData.supervisor_username;
+      let namaSupervisor = pegawaiData.nama_supervisor;
 
+      // Evaluasi apakah posisi user adalah Supervisor / Admin / HRD / Director
+      const jabatanUpper = String(pegawaiData.jabatan || '').toUpperCase();
+      const unitUpper = String(pegawaiData.unit_kerja || unit_kerja || '').toUpperCase();
+      const isSelfSupervisor = 
+        jabatanUpper.includes('SUPERVISOR') || 
+        jabatanUpper.includes('SPV') || 
+        jabatanUpper.includes('MANAGER') || 
+        jabatanUpper.includes('DIRECTOR') || 
+        jabatanUpper.includes('HRD') || 
+        jabatanUpper.includes('ADMIN') || 
+        unitUpper.includes('SUPERVISOR');
+
+      // Jika supervisor_username tidak ditemukan/kosong di database:
       if (!supervisorUsername) {
-        await connection.rollback();
-        if (upload) await cleanupStoredUploads([upload]);
-        return NextResponse.json({ success: false, error: 'Pegawai belum memiliki supervisor yang terikat.' }, { status: 400 });
+        if (isSelfSupervisor) {
+          // Supervisor / Admin yang melakukan absen mandiri
+          supervisorUsername = pegawaiData.nik || nik;
+          namaSupervisor = pegawaiData.nama || nama || 'SUPERVISOR';
+        } else {
+          // Pegawai biasa yang belum terikat supervisor
+          await connection.rollback();
+          if (upload) await cleanupStoredUploads([upload]);
+          return NextResponse.json({ success: false, error: 'Pegawai belum memiliki supervisor yang terikat. Silakan hubungi Admin / HRD.' }, { status: 400 });
+        }
       }
 
       // B. Cek status absensi hari ini
@@ -124,7 +157,7 @@ export async function POST(req: Request) {
         await connection.query(
           `INSERT INTO absensi (nik, nama, unit_kerja, nama_supervisor, tanggal, waktu_masuk, waktu_keluar, lokasi, status, foto_masuk)
            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 'HADIR', ?)`,
-          [nik, nama, unit_kerja, namaSupervisor, tanggalWIB, waktuWIB, lokasiGabungan, fotoReference]
+          [nik, pegawaiData.nama || nama, pegawaiData.unit_kerja || unit_kerja, namaSupervisor, tanggalWIB, waktuWIB, lokasiGabungan, fotoReference]
         );
 
       } else if (jenis_absen === 'Pulang') {
@@ -150,9 +183,10 @@ export async function POST(req: Request) {
 
       // C. Kirim Notifikasi Sistem
       const tipePesan = `Absensi ${jenis_absen}`;
-      const kontenPesan = `Pegawai ${nama} (NIK: ${nik}) telah melakukan absensi ${jenis_absen} pada lokasi: ${lokasiGabungan}`;
+      const kontenPesan = `Pegawai ${pegawaiData.nama || nama} (NIK: ${nik}) telah melakukan absensi ${jenis_absen} pada lokasi: ${lokasiGabungan}`;
 
-      if (supervisorUsername) {
+      // Notifikasi ke Supervisor (jika bukan NIK diri sendiri)
+      if (supervisorUsername && supervisorUsername !== nik) {
         await connection.query(
           `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, is_read, created_at)
            VALUES ('Pegawai', ?, ?, ?, 0, NOW())`,
@@ -160,6 +194,7 @@ export async function POST(req: Request) {
         );
       }
 
+      // Notifikasi ke HRD
       await connection.query(
         `INSERT INTO pesan_notifikasi (pengirim_role, penerima_nik, tipe_pesan, konten, is_read, created_at)
          VALUES ('Pegawai', 'HRD', ?, ?, 0, NOW())`,

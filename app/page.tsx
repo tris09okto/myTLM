@@ -31,6 +31,8 @@ export default async function HomePage() {
       redirect("/guest/dashboard");
     case "supervisor":
       redirect("/supervisor/dashboard");
+    case "mitra":
+      redirect("/mitra/dashboard");
     default:
       // Jika rolenya tidak dikenali (mencegah error)
       redirect("/login");

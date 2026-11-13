@@ -62,7 +62,8 @@ function cloudinaryUpload(options: {
     api_secret: apiSecret,
   });
   const id = randomUUID();
-  const publicId = `${id}${options.extension}`;
+  const publicId = options.resourceType === "raw" ? `${id}${options.extension}` : id;
+  //const publicId = `${id}${options.extension}`;
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -95,8 +96,9 @@ export async function storeUpload(
   }
 
   const extension = safeExtension(localFileName);
-  const resourceType = options.resourceType ??
-  (options.contentType.startsWith("image/") || options.contentType === "application/pdf" ? "image" : "raw");
+  const resourceType = options.resourceType ?? (options.contentType.startsWith("image/") ? "image" : "raw");
+  //const resourceType = options.resourceType ??
+  //(options.contentType.startsWith("image/") || options.contentType === "application/pdf" ? "image" : "raw");
 
   const hasCloudinaryCredentials = Boolean(
     process.env.CLOUDINARY_CLOUD_NAME &&
@@ -201,4 +203,125 @@ export async function cleanupStoredUploads(
       }
     }),
   );
+}
+
+// lib/uploads.ts
+
+export async function deleteFileByRef(
+  reference: string | null | undefined,
+  folder: string = '',
+  resourceType: UploadResourceType = 'image'
+): Promise<void> {
+  if (!reference || String(reference).trim() === '') return;
+
+  // 1. Tangani jika reference berisi beberapa file dipisah koma
+  const refs = String(reference)
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
+
+  if (refs.length > 1) {
+    await Promise.allSettled(
+      refs.map((ref) => deleteFileByRef(ref, folder, resourceType))
+    );
+    return;
+  }
+
+  const cleanRef = refs[0];
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  try {
+    // 2. Penghapusan jika URL Cloudinary
+    if (
+      cleanRef.startsWith('http://') ||
+      cleanRef.startsWith('https://') ||
+      cleanRef.includes('cloudinary.com')
+    ) {
+      // Cukup pastikan kredensial ada, TANPA mengecek NODE_ENV
+      if (!cloudName || !apiKey || !apiSecret) {
+        console.error('❌ [Cloudinary] Kredensial .env (CLOUD_NAME / API_KEY / API_SECRET) belum terpasang!');
+        return;
+      }
+
+      cloudinary.config({
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret,
+      });
+
+      const urlObj = new URL(cleanRef);
+      const pathname = urlObj.pathname;
+
+      // Ambil public_id lengkap setelah '/upload/' (mengabaikan versi /v123456/)
+      const match = pathname.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+
+      if (match) {
+        const rawPublicId = match[1];
+
+        // Kandidat public_id untuk mengantisipasi nama file dengan ekstensi ganda (.jpg.jpg atau .pdf.pdf)
+        const singleExtStripped = rawPublicId.replace(/\.[^/.]+$/, '');
+        const allExtStripped = rawPublicId.replace(/(\.[^/.]+)+$/, '');
+
+        const candidatePublicIds = Array.from(
+          new Set([rawPublicId, singleExtStripped, allExtStripped])
+        );
+
+        // Tipe resource yang akan dicoba (image dan raw)
+        const resourceTypesToTry: UploadResourceType[] = [
+          resourceType,
+          resourceType === 'image' ? 'raw' : 'image',
+        ];
+
+        let isDeleted = false;
+
+        for (const type of resourceTypesToTry) {
+          for (const pid of candidatePublicIds) {
+            const res = await cloudinary.uploader.destroy(pid, {
+              resource_type: type,
+              invalidate: true,
+            });
+
+            console.log(`🔍 [Cloudinary Try] ID: "${pid}" | Type: ${type} => Result: ${res.result}`);
+
+            if (res.result === 'ok') {
+              console.log(`✅ [Cloudinary Success] Berhasil menghapus file: ${pid}`);
+              isDeleted = true;
+              break;
+            }
+          }
+          if (isDeleted) break;
+        }
+
+        if (!isDeleted) {
+          console.warn(`⚠️ [Cloudinary Warning] Gagal menghapus file ${cleanRef}. Tidak ditemukan pada semua kandidat ID.`);
+        }
+      }
+      return;
+    }
+
+    // 3. Penghapusan dari Storage Lokal jika bukan URL Cloudinary
+    const fileName = path.basename(cleanRef);
+    const possibleFolders = Array.from(
+      new Set([folder, 'pas_foto', 'surat_tugas', 'non-fronting', ''])
+    );
+
+    for (const f of possibleFolders) {
+      const absolutePath = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        f,
+        fileName
+      );
+      try {
+        await rm(absolutePath, { force: true });
+      } catch (e) {
+        // Abaikan jika file tidak ada di subfolder tersebut
+      }
+    }
+  } catch (error) {
+    console.error(`❌ [Cloudinary Error] Gagal menghapus file (${cleanRef}):`, error);
+  }
 }

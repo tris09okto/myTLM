@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
-import { SessionProvider, useSession, signOut } from "next-auth/react";
+import { useState, useEffect, useRef, FormEvent } from "react";
+import { useSession, signOut } from "next-auth/react";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +74,9 @@ function SupervisorDashboardContent() {
   const { data: session, status } = useSession();
   const [currentView, setCurrentView] = useState("dashboard");
   
+  // --- STATE PROFIL SUPERVISOR ---
+  const [profile, setProfile] = useState<any>(null);
+
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +86,19 @@ function SupervisorDashboardContent() {
   const [showNotifikasi, setShowNotifikasi] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedNotifikasi, setSelectedNotifikasi] = useState<any>(null);
+
+  // --- STATE PEKERJAAN & TUGAS TIM ---
+  const [searchPekerjaan, setSearchPekerjaan] = useState("");
+  const [selectedPegawaiWork, setSelectedPegawaiWork] = useState<any>(null);
+
+  // --- STATE APPROVAL IZIN & CUTI TIM ---
+  const [izinList, setIzinList] = useState<any[]>([]);
+  const [isLoadingIzin, setIsLoadingIzin] = useState(false);
+  const [selectedIzin, setSelectedIzin] = useState<any>(null);
+  const [approvalCatatan, setApprovalCatatan] = useState("");
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+  const [approvalMsg, setApprovalMsg] = useState({ type: '', text: '' });
+  const [filterStatusIzin, setFilterStatusIzin] = useState("ALL");
 
   // --- STATE LAPORAN & ADUAN TIM ---
   const [laporanList, setLaporanList] = useState<any[]>([]);
@@ -98,11 +114,10 @@ function SupervisorDashboardContent() {
   const [isSubmittingSurvey, setIsSubmittingSurvey] = useState(false);
   const [surveyMsg, setSurveyMsg] = useState({ type: '', text: '' });
 
-  // --- STATE STATUS GAJI / PEMASUKAN TIM ---
-  const [gajiList, setGajiList] = useState<any[]>([]);
-  const [isLoadingGaji, setIsLoadingGaji] = useState(false);
-  const [searchGaji, setSearchGaji] = useState("");
-  const [currentPageGaji, setCurrentPageGaji] = useState(1);
+  // --- STATE STATUS GAJI ---
+  const [gajiList] = useState<any[]>([]);
+  const [searchGaji] = useState("");
+  const [currentPageGaji] = useState(1);
   const itemsPerPage = 10;
 
   // --- STATE GANTI PASSWORD SPV ---
@@ -130,24 +145,260 @@ function SupervisorDashboardContent() {
   const currentGajiList = filteredGaji.slice(indexOfFirstGaji, indexOfLastGaji);
   const totalPagesGaji = Math.ceil(filteredGaji.length / itemsPerPage);
 
-  /*const fetchGajiTim = async () => {
-    setIsLoadingGaji(true);
-    try {
-      const userName = session?.user?.name || (session?.user as any)?.username || ""; 
-      if (!userName) return;
+  // State Absensi Supervisor
+  const [sudahMasuk, setSudahMasuk] = useState(false);
+  const [sudahPulang, setSudahPulang] = useState(false);
 
-      const res = await fetch(`/api/spv/gaji-tim?username=${userName}`);
+  // State Modal & Lokasi
+  const [showAbsenModal, setShowAbsenModal] = useState(false);
+  const [absenType, setAbsenType] = useState<"Masuk" | "Pulang">("Masuk");
+  const [absenPhoto, setAbsenPhoto] = useState<File | null>(null);
+  const [absenPhotoPreview, setAbsenPhotoPreview] = useState<string | null>(null);
+  const [absenLocation, setAbsenLocation] = useState({ lat: 0, lng: 0, address: "" });
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSubmittingAbsen, setIsSubmittingAbsen] = useState(false);
+
+  // Ref Kamera Live
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  // Fetch Profil Supervisor dari API atau fallback ke session
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!session) return;
+      try {
+        const res = await fetch("/api/pegawai/profile");
+        const contentType = res.headers.get("content-type");
+        if (res.ok && contentType && contentType.includes("application/json")) {
+          const result = await res.json();
+          if (result.success) {
+            setProfile(result.data);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat profile supervisor:", err);
+      }
+    };
+
+    fetchProfile();
+  }, [session]);
+
+  // Cek status absen supervisor hari ini
+  const cekStatusAbsen = async () => {
+    const targetNik = profile?.nik || session?.user?.name;
+    if (!targetNik) return;
+
+    try {
+      const res = await fetch(`/api/pegawai/cek-absen?nik=${targetNik}`);
       const result = await res.json();
-      
       if (result.success) {
-        setGajiList(result.data);
+        setSudahMasuk(result.sudahMasuk);
+        setSudahPulang(result.sudahPulang);
+      }
+    } catch (e) {
+      console.error("Gagal mengecek status absen supervisor:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (profile || session) cekStatusAbsen();
+  }, [profile, session]);
+
+  // Geolocation
+  const getGeoLocation = () => {
+    setIsLocating(true);
+    if (!navigator.geolocation) {
+      alert("Browser tidak mendukung Geolocation.");
+      setIsLocating(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+          );
+          const data = await res.json();
+          setAbsenLocation({
+            lat,
+            lng,
+            address: data.display_name || "Alamat tidak ditemukan",
+          });
+        } catch (e) {
+          setAbsenLocation({
+            lat,
+            lng,
+            address: `Koordinat: ${lat}, ${lng}`,
+          });
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        alert("Gagal mengambil lokasi. Pastikan izin GPS aktif.");
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  // Kamera Live
+  const startCamera = async () => {
+    try {
+      setIsCameraOpen(true);
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
       }
     } catch (error) {
-      console.error("Gagal mengambil data gaji tim", error);
-    } finally {
-      setIsLoadingGaji(false);
+      alert("Kamera tidak dapat diakses.");
+      setIsCameraOpen(false);
     }
-  };*/
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+
+      if (context) {
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height);
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const fileName = `absen_spv_${profile?.nik || session?.user?.name || 'spv'}_${Date.now()}.jpg`;
+            const photoFile = new File([blob], fileName, { type: "image/jpeg" });
+            setAbsenPhoto(photoFile);
+            setAbsenPhotoPreview(URL.createObjectURL(photoFile));
+            stopCamera();
+          }
+        }, "image/jpeg", 0.6);
+      }
+    }
+  };
+
+  const handleCloseModal = () => {
+    stopCamera();
+    setShowAbsenModal(false);
+  };
+
+  const handleAbsenMasuk = () => {
+    setAbsenType("Masuk");
+    setAbsenPhoto(null);
+    setAbsenPhotoPreview(null);
+    setShowAbsenModal(true);
+    getGeoLocation();
+  };
+
+  const handleAbsenPulang = () => {
+    setAbsenType("Pulang");
+    setAbsenPhoto(null);
+    setAbsenPhotoPreview(null);
+    setShowAbsenModal(true);
+    getGeoLocation();
+  };
+
+  const submitAbsenRealtime = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!absenPhoto) {
+      alert("⚠️ Foto absensi wajib diambil terlebih dahulu!");
+      return;
+    }
+
+    const spvNik = profile?.nik || session?.user?.name;
+    if (!spvNik) {
+      alert("⚠️ NIK Supervisor tidak ditemukan.");
+      return;
+    }
+
+    setIsSubmittingAbsen(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("nik", spvNik);
+      formData.append("nama", profile?.nama || dashboardData?.spv?.nama_leader || session?.user?.name || "");
+      formData.append("unit_kerja", profile?.unit_kerja || "SUPERVISOR");
+      formData.append("jenis_absen", absenType);
+      formData.append("latitude", absenLocation.lat.toString());
+      formData.append("longitude", absenLocation.lng.toString());
+      formData.append("lokasi_alamat", absenLocation.address);
+      formData.append("foto_absen", absenPhoto);
+
+      const response = await fetch("/api/pegawai/absen", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`✅ ${result.message}`);
+        handleCloseModal();
+        await cekStatusAbsen();
+      } else {
+        alert(`❌ Gagal: ${result.error || result.message}`);
+      }
+    } catch (error) {
+      console.error("Error submitting absen:", error);
+      alert("❌ Terjadi kesalahan saat mengirim absensi.");
+    } finally {
+      setIsSubmittingAbsen(false);
+    }
+  };
+
+  const filteredTeamWork = dashboardData?.team?.filter((member: any) => {
+    if (!searchPekerjaan) return true;
+    const kw = searchPekerjaan.toLowerCase();
+    return (
+      String(member.nama || "").toLowerCase().includes(kw) ||
+      String(member.nik || "").toLowerCase().includes(kw) ||
+      String(member.unit_kerja || "").toLowerCase().includes(kw) ||
+      String(member.jabatan || "").toLowerCase().includes(kw) ||
+      String(member.area_penempatan || "").toLowerCase().includes(kw)
+    );
+  }) || [];
+
+  const filteredIzinList = izinList.filter((item: any) => {
+    if (filterStatusIzin === "ALL") return true;
+    return String(item.status || "").toUpperCase() === filterStatusIzin;
+  });
 
   const formatArea = (areaData: string) => {
     if (!areaData) return '-';
@@ -236,6 +487,7 @@ function SupervisorDashboardContent() {
 
         if (!response.ok) throw new Error(result.error || "Gagal memuat data dashboard SPV");
         setDashboardData(result);
+        setProfile((prev: any) => prev || result.spv);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -251,6 +503,50 @@ function SupervisorDashboardContent() {
       return () => clearInterval(intervalId);
     }
   }, [session]);
+
+  useEffect(() => {
+    const fetchIzinList = async () => {
+      const activeSpvName =
+        dashboardData?.spv?.nama_leader || profile?.nama || session?.user?.name || "";
+      const activeUsername =
+        session?.user?.name || (session?.user as any)?.username || "";
+      const activeNik = profile?.nik || dashboardData?.spv?.nik || "";
+
+      if (!activeSpvName && !activeUsername && !activeNik) return;
+
+      setIsLoadingIzin(true);
+      try {
+        const params = new URLSearchParams({
+          spvName: activeSpvName,
+          username: activeUsername,
+          nik: activeNik,
+        });
+
+        const res = await fetch(`/api/spv/approval-izin?${params.toString()}`);
+        const contentType = res.headers.get("content-type");
+        if (!res.ok || !contentType || !contentType.includes("application/json")) {
+          setIzinList([]);
+          return;
+        }
+
+        const result = await res.json();
+        if (result.success) {
+          setIzinList(result.data || []);
+        } else {
+          setIzinList([]);
+        }
+      } catch (e) {
+        console.error("Gagal menarik data perizinan tim:", e);
+        setIzinList([]);
+      } finally {
+        setIsLoadingIzin(false);
+      }
+    };
+
+    if (session || dashboardData || profile) {
+      fetchIzinList();
+    }
+  }, [currentView, dashboardData, profile, session]);
 
   useEffect(() => {
     const fetchLaporan = async () => {
@@ -272,8 +568,6 @@ function SupervisorDashboardContent() {
     };
 
     if (currentView === 'laporan') fetchLaporan();
-    //if (currentView === 'status-gaji') fetchGajiTim();
-
   }, [currentView, dashboardData, session]);
 
   const handleOpenNotifikasi = async (item: any) => {
@@ -309,6 +603,57 @@ function SupervisorDashboardContent() {
       });
     } catch (e) {
       console.error("Gagal update status read");
+    }
+  };
+
+  const handleProcessApproval = async (statusApproval: 'DISETUJUI' | 'DITOLAK') => {
+    if (!selectedIzin) return;
+
+    setIsSubmittingApproval(true);
+    setApprovalMsg({ type: '', text: '' });
+
+    try {
+      const res = await fetch('/api/spv/approval-izin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedIzin.id,
+          status: statusApproval,
+          catatan_spv: approvalCatatan,
+          approved_by: session?.user?.name || (session?.user as any)?.username
+        })
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        setApprovalMsg({ 
+          type: 'success', 
+          text: `Izin berhasil di-${statusApproval === 'DISETUJUI' ? 'setujui' : 'tolak'}!` 
+        });
+
+        setIzinList(prev => prev.map(item => {
+          if (item.id === selectedIzin.id) {
+            return {
+              ...item,
+              status: statusApproval,
+              catatan_spv: approvalCatatan,
+              approved_by: session?.user?.name || (session?.user as any)?.username
+            };
+          }
+          return item;
+        }));
+
+        setTimeout(() => {
+          setSelectedIzin(null);
+          setApprovalCatatan("");
+        }, 1200);
+      } else {
+        setApprovalMsg({ type: 'error', text: result.message || 'Gagal memproses approval.' });
+      }
+    } catch (e) {
+      setApprovalMsg({ type: 'error', text: 'Terjadi kesalahan sistem saat memproses approval.' });
+    } finally {
+      setIsSubmittingApproval(false);
     }
   };
 
@@ -359,7 +704,6 @@ function SupervisorDashboardContent() {
     }
   };
 
-  // Handler Submit Survey Kunjungan
   const handleSubmitSurvey = async (e: FormEvent) => {
     e.preventDefault();
     setSurveyMsg({ type: '', text: '' });
@@ -434,6 +778,52 @@ function SupervisorDashboardContent() {
             📊 DASHBOARD UTAMA
           </button>
 
+          {/* Tombol Absen di Sidebar Dashboard Supervisor */}
+          <div className="mt-6 flex flex-col gap-2 px-4">
+            <button 
+              onClick={handleAbsenMasuk}
+              disabled={sudahMasuk}
+              className={`w-full py-3 px-4 rounded-xl font-bold shadow-sm transition-colors flex items-center justify-center gap-2 text-xs ${
+                sudahMasuk 
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
+            >
+              🕒 {sudahMasuk ? 'SUDAH ABSEN MASUK' : 'KLIK ABSEN MASUK'}
+            </button>
+
+            <button 
+              onClick={handleAbsenPulang}
+              disabled={!sudahMasuk || sudahPulang}
+              className={`w-full py-3 px-4 rounded-xl font-bold shadow-sm transition-colors flex items-center justify-center gap-2 text-xs ${
+                !sudahMasuk || sudahPulang 
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              🏃 {sudahPulang ? 'SUDAH ABSEN PULANG' : 'KLIK ABSEN PULANG'}
+            </button>
+          </div>
+
+          <button 
+            onClick={() => setCurrentView("pekerjaan-tim")}
+            className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'pekerjaan-tim' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+          >
+            📋 PEKERJAAN & TUGAS TIM
+          </button>
+
+          <button 
+            onClick={() => setCurrentView("approval-izin")}
+            className={`w-full text-left px-4 py-3 rounded-md transition-colors flex items-center justify-between ${currentView === 'approval-izin' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+          >
+            <span>✉️ APPROVAL IZIN TIM</span>
+            {izinList.filter(i => String(i.status).toUpperCase() === 'PENDING').length > 0 && (
+              <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {izinList.filter(i => String(i.status).toUpperCase() === 'PENDING').length}
+              </span>
+            )}
+          </button>
+
           <button 
             onClick={() => setCurrentView("laporan")}
             className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'laporan' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
@@ -441,7 +831,6 @@ function SupervisorDashboardContent() {
             📝 LAPORAN & ADUAN TIM
           </button>
 
-          {/* MENU BARU SURVEY KUNJUNGAN */}
           <button 
             onClick={() => setCurrentView("survey-kunjungan")}
             className={`w-full text-left px-4 py-3 rounded-md transition-colors ${currentView === 'survey-kunjungan' ? 'bg-gray-800 font-bold text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
@@ -479,6 +868,8 @@ function SupervisorDashboardContent() {
         <div className="mb-8 border-b pb-4 flex justify-between items-center relative z-20">
           <h1 className="text-2xl font-bold text-gray-800 uppercase">
             {currentView === 'dashboard' && 'Ringkasan Anggota Tim Non-Fronting'}
+            {currentView === 'pekerjaan-tim' && 'Daftar Anggota & Detail Pekerjaan Tim'}
+            {currentView === 'approval-izin' && 'Approval Perizinan & Cuti Tim'}
             {currentView === 'laporan' && 'Laporan & Aduan Anggota Tim'}
             {currentView === 'survey-kunjungan' && 'Form Survey Kunjungan Lapangan'}
             {currentView === 'status-gaji' && 'Status Gaji & Penghasilan Tim'}
@@ -486,7 +877,6 @@ function SupervisorDashboardContent() {
           </h1>
           
           <div className="flex items-center gap-6">
-            
             <div className="relative">
               <button 
                 onClick={() => setShowNotifikasi(!showNotifikasi)}
@@ -632,7 +1022,232 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
-        {/* 2. LAPORAN & ADUAN TIM */}
+        {/* 2. PEKERJAAN & TUGAS TIM */}
+        {currentView === 'pekerjaan-tim' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gray-900 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    📋 Daftar Anggota & Pekerjaan Penugasan Tim
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Memantau unit kerja, posisi jabatan, lokasi penempatan, dan dokumen surat tugas pegawai under supervisi.
+                  </p>
+                </div>
+
+                <div className="w-full md:w-auto">
+                  <input
+                    type="text"
+                    value={searchPekerjaan}
+                    onChange={(e) => setSearchPekerjaan(e.target.value)}
+                    placeholder="Cari Nama, NIK, Unit Kerja, Jabatan..."
+                    className="w-full md:w-72 px-4 py-2 rounded-lg text-sm bg-gray-800 text-white placeholder-gray-400 outline-none border border-gray-700 focus:border-green-500"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-700 border-b border-gray-200 text-xs uppercase tracking-wider">
+                      <th className="px-6 py-4 font-bold">No</th>
+                      <th className="px-6 py-4 font-bold">Pegawai & NIK</th>
+                      <th className="px-6 py-4 font-bold">Pekerjaan / Unit Kerja</th>
+                      <th className="px-6 py-4 font-bold">Jabatan</th>
+                      <th className="px-6 py-4 font-bold">Area & Alamat Penempatan</th>
+                      <th className="px-6 py-4 font-bold text-center">Surat Tugas</th>
+                      <th className="px-6 py-4 font-bold text-center">Status</th>
+                      <th className="px-6 py-4 font-bold text-center">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {isLoadingData ? (
+                      <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-400 animate-pulse">Memuat rincian pekerjaan tim...</td></tr>
+                    ) : filteredTeamWork.length > 0 ? (
+                      filteredTeamWork.map((pegawai: any, index: number) => (
+                        <tr key={pegawai.id || index} className="hover:bg-green-50/50 transition-colors">
+                          <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
+                          <td className="px-6 py-4 text-sm">
+                            <span className="font-bold text-gray-900 block">{pegawai.nama}</span>
+                            <span className="text-xs text-gray-500 font-mono">NIK: {pegawai.nik || '-'}</span>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-semibold text-green-700">
+                            {pegawai.unit_kerja || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-700">
+                            <span className="bg-gray-100 text-gray-800 px-2.5 py-1 rounded-md text-xs font-semibold">
+                              {pegawai.jabatan || 'PEGAWAI'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <div className="font-semibold text-gray-800">{pegawai.area_penempatan || '-'}</div>
+                            <div className="text-xs text-gray-500 truncate max-w-xs">{pegawai.alamat_area_penempatan || '-'}</div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-center">
+                            {pegawai.surat_tugas ? (
+                              <a
+                                href={pegawai.surat_tugas.startsWith('http') ? pegawai.surat_tugas : `/uploads/non-fronting/surat_tugas/${pegawai.surat_tugas}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-green-50 text-green-700 hover:bg-green-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-green-200"
+                              >
+                                📄 Unduh PDF
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Tidak ada</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              pegawai.status === 'AKTIF' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {pegawai.status || 'AKTIF'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-center">
+                            <button
+                              onClick={() => setSelectedPegawaiWork(pegawai)}
+                              className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                            >
+                              🔍 Rincian
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
+                          <span className="text-3xl block mb-2">📋</span>
+                          Tidak ada data pekerjaan pegawai yang sesuai dengan kriteria pencarian.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. APPROVAL IZIN & CUTI TIM */}
+        {currentView === 'approval-izin' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden space-y-4 p-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">✉️ Approval Perizinan & Cuti Tim</h2>
+                <p className="text-xs text-gray-500 mt-1">Verifikasi pengajuan izin/cuti anggota tim dan tentukan status persetujuan.</p>
+              </div>
+
+              {/* Filter Status */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-600">Filter Status:</span>
+                <select 
+                  value={filterStatusIzin} 
+                  onChange={(e) => setFilterStatusIzin(e.target.value)}
+                  className="border border-gray-300 rounded-lg text-xs font-bold px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="ALL">SEMUA STATUS</option>
+                  <option value="PENDING">PENDING (MENUNGGU)</option>
+                  <option value="DISETUJUI">DISETUJUI</option>
+                  <option value="DITOLAK">DITOLAK</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-700 border-b border-gray-200 text-xs uppercase tracking-wider">
+                    <th className="px-6 py-4 font-bold">Tgl. Pengajuan</th>
+                    <th className="px-6 py-4 font-bold">Nama Pegawai & NIK</th>
+                    <th className="px-6 py-4 font-bold">Jenis Izin</th>
+                    <th className="px-6 py-4 font-bold">Tgl. Pelaksanaan</th>
+                    <th className="px-6 py-4 font-bold">Alasan / Keterangan</th>
+                    <th className="px-6 py-4 font-bold text-center">Lampiran</th>
+                    <th className="px-6 py-4 font-bold text-center">Status SPV</th>
+                    <th className="px-6 py-4 font-bold text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {isLoadingIzin ? (
+                    <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-400 animate-pulse">Memuat data pengajuan izin...</td></tr>
+                  ) : filteredIzinList.length > 0 ? (
+                    filteredIzinList.map((item: any) => {
+                      const statusUpper = String(item.status || 'PENDING').toUpperCase();
+                      return (
+                        <tr key={item.id} className="hover:bg-green-50/50 transition-colors">
+                          <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                            {new Date(item.created_at || item.tanggal_pengajuan).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-gray-800">
+                            {item.nama} <br />
+                            <span className="text-xs text-gray-400 font-mono font-normal">NIK: {item.nik}</span>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-semibold">
+                            <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-100 uppercase">
+                              {item.jenis_izin || item.tipe_izin || 'IZIN'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-700 font-medium whitespace-nowrap">
+                            {item.tanggal_mulai} s.d. {item.tanggal_selesai || item.tanggal_mulai}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-600 max-w-xs truncate" title={item.alasan}>
+                            {item.alasan || item.keterangan || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {item.file_bukti ? (
+                              <a 
+                                href={item.file_bukti.startsWith('http') ? item.file_bukti : `/uploads/izin/${item.file_bukti}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 font-bold hover:underline text-xs"
+                              >
+                                📎 File
+                              </a>
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${
+                              statusUpper === 'DISETUJUI' ? 'bg-green-100 text-green-700' :
+                              statusUpper === 'DITOLAK' ? 'bg-red-100 text-red-700' :
+                              'bg-amber-100 text-amber-700'
+                            }`}>
+                              {statusUpper}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => {
+                                setSelectedIzin(item);
+                                setApprovalCatatan(item.catatan_spv || "");
+                                setApprovalMsg({ type: '', text: '' });
+                              }}
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                            >
+                              {statusUpper === 'PENDING' ? '⚡ Process' : '🔍 Review'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
+                        <span className="text-3xl block mb-2">✉️</span>
+                        Belum ada pengajuan izin/cuti dari anggota tim.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 4. LAPORAN & ADUAN TIM */}
         {currentView === 'laporan' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gray-900 p-5 flex justify-between items-center">
@@ -694,7 +1309,7 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
-        {/* 3. FORM SURVEY KUNJUNGAN (BARU) */}
+        {/* 5. FORM SURVEY KUNJUNGAN */}
         {currentView === 'survey-kunjungan' && (
           <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
             <div className="flex items-center gap-3 mb-4 border-b border-gray-100 pb-4">
@@ -761,76 +1376,7 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
-        {/* 4. STATUS GAJI TIM */}
-        {/*currentView === 'status-gaji' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-800">Status Gaji Bulanan Anggota Tim</h2>
-                <p className="text-sm text-gray-500">Memantau status rekap gaji pegawai non-fronting di bawah supervisi Anda.</p>
-              </div>
-              <div className="flex gap-2 w-full md:w-auto">
-                <input 
-                  type="text"
-                  value={searchGaji}
-                  onChange={(e) => { setSearchGaji(e.target.value); setCurrentPageGaji(1); }}
-                  placeholder="Cari nama pegawai..."
-                  className="w-full md:w-64 p-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-green-500 outline-none"
-                />
-                <button onClick={fetchGajiTim} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold transition-colors">
-                  🔄 Muat Ulang
-                </button>
-              </div>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider border-b border-gray-200">
-                    <th className="px-6 py-4 font-bold">Periode</th>
-                    <th className="px-6 py-4 font-bold">Nama Pegawai</th>
-                    <th className="px-6 py-4 font-bold">Unit Kerja</th>
-                    <th className="px-6 py-4 font-bold">Gaji Pokok</th>
-                    <th className="px-6 py-4 font-bold">Total Diterima</th>
-                    <th className="px-6 py-4 font-bold text-center">Status Validasi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {isLoadingGaji ? (
-                    <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400 animate-pulse">Memuat data gaji...</td></tr>
-                  ) : currentGajiList.length > 0 ? (
-                    currentGajiList.map((item, idx) => (
-                      <tr key={item.id || idx} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">{item.periode || '-'}</td>
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900">{item.nama || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{item.unit_kerja || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600">Rp {Number(item.gaji_pokok || 0).toLocaleString('id-ID')}</td>
-                        <td className="px-6 py-4 text-sm font-bold text-gray-900">Rp {Number(item.total_gaji || 0).toLocaleString('id-ID')}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide 
-                            ${item.status === 'Disetujui' || item.status === 'Selesai' ? 'bg-green-100 text-green-700' : 
-                              item.status === 'Ditolak' ? 'bg-red-100 text-red-700' : 
-                              'bg-amber-100 text-amber-700'}`}>
-                            {item.status || 'Pending'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-500">Tidak ada data gaji tim yang ditemukan.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <Pagination 
-              currentPage={currentPageGaji} 
-              totalPages={totalPagesGaji} 
-              onPageChange={(page) => setCurrentPageGaji(page)} 
-            />
-          </div>
-        )*/}
-        {/* 3. TAMPILAN STATUS GAJI TIM (SEDANG DI-DEVELOP) */}
+        {/* 6. TAMPILAN STATUS GAJI TIM */}
         {currentView === 'status-gaji' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <div className="max-w-md mx-auto space-y-4">
@@ -848,7 +1394,7 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
-        {/* 5. PENGATURAN AKUN & GANTI PASSWORD */}
+        {/* 7. PENGATURAN AKUN & GANTI PASSWORD */}
         {currentView === 'pengaturan' && (
           <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-8 animate-fade-in">
             <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
@@ -932,6 +1478,114 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
+        {/* MODAL APPROVAL IZIN TIM */}
+        {selectedIzin && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="bg-gray-900 text-white p-5 flex justify-between items-center shrink-0">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  ✉️ Detail & Approval Pengajuan Izin
+                </h3>
+                <button onClick={() => setSelectedIzin(null)} className="text-gray-400 hover:text-white text-xl font-bold transition-colors">✕</button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-sm">
+                {approvalMsg.text && (
+                  <div className={`p-4 rounded-lg text-sm font-semibold flex items-center gap-2 ${approvalMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                    {approvalMsg.type === 'success' ? '✅' : '⚠️'} {approvalMsg.text}
+                  </div>
+                )}
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-bold text-gray-900">{selectedIzin.nama}</h4>
+                    <p className="text-xs text-gray-500 font-mono">NIK: {selectedIzin.nik}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    String(selectedIzin.status).toUpperCase() === 'DISETUJUI' ? 'bg-green-600 text-white' :
+                    String(selectedIzin.status).toUpperCase() === 'DITOLAK' ? 'bg-red-600 text-white' :
+                    'bg-amber-500 text-white'
+                  }`}>
+                    {selectedIzin.status || 'PENDING'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Jenis Perizinan</span>
+                    <span className="font-bold text-green-700 text-base">{selectedIzin.jenis_izin || selectedIzin.tipe_izin || 'IZIN'}</span>
+                  </div>
+
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Tanggal Pelaksanaan</span>
+                    <span className="font-bold text-gray-800 text-sm">{selectedIzin.tanggal_mulai} s.d {selectedIzin.tanggal_selesai || selectedIzin.tanggal_mulai}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Alasan / Keterangan Pengajuan</span>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 text-gray-800 text-sm leading-relaxed whitespace-pre-line">
+                    {selectedIzin.alasan || selectedIzin.keterangan || '-'}
+                  </div>
+                </div>
+
+                {selectedIzin.file_bukti && (
+                  <div>
+                    <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Dokumen Lampiran Bukti</span>
+                    <a
+                      href={selectedIzin.file_bukti.startsWith('http') ? selectedIzin.file_bukti : `/uploads/izin/${selectedIzin.file_bukti}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold px-4 py-2 rounded-lg text-xs transition-colors border border-blue-200"
+                    >
+                      📎 Buka / Unduh Lampiran Bukti
+                    </a>
+                  </div>
+                )}
+
+                <div className="border-t pt-4">
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
+                    Catatan Supervisor (Opsional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={approvalCatatan}
+                    onChange={(e) => setApprovalCatatan(e.target.value)}
+                    placeholder="Berikan alasan atau catatan approval untuk pegawai..."
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-600 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50 focus:bg-white transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center shrink-0">
+                <button 
+                  onClick={() => setSelectedIzin(null)} 
+                  className="px-4 py-2 text-xs font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+                >
+                  Tutup
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleProcessApproval('DITOLAK')}
+                    disabled={isSubmittingApproval}
+                    className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    ❌ Tolak Izin
+                  </button>
+                  <button
+                    onClick={() => handleProcessApproval('DISETUJUI')}
+                    disabled={isSubmittingApproval}
+                    className="px-5 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    ✅ Setujui Izin
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL FULL VIEW DETAIL NOTIFIKASI */}
         {selectedNotifikasi && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
@@ -979,6 +1633,174 @@ function SupervisorDashboardContent() {
           </div>
         )}
 
+        {/* MODAL DETAIL RINCIAN PEKERJAAN ANGGOTA TIM */}
+        {selectedPegawaiWork && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="bg-gray-900 text-white p-5 flex justify-between items-center shrink-0">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  👤 Detail Pekerjaan & Penugasan Pegawai
+                </h3>
+                <button onClick={() => setSelectedPegawaiWork(null)} className="text-gray-400 hover:text-white text-xl font-bold transition-colors">✕</button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-sm">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-bold text-gray-900">{selectedPegawaiWork.nama}</h4>
+                    <p className="text-xs text-gray-500 font-mono">NIK: {selectedPegawaiWork.nik || '-'}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    selectedPegawaiWork.status === 'AKTIF' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                  }`}>
+                    {selectedPegawaiWork.status || 'AKTIF'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Unit Kerja</span>
+                    <span className="font-bold text-green-700 text-base">{selectedPegawaiWork.unit_kerja || '-'}</span>
+                  </div>
+
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Jabatan</span>
+                    <span className="font-bold text-gray-800 text-base">{selectedPegawaiWork.jabatan || 'PEGAWAI'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Area Penempatan</span>
+                    <p className="font-semibold text-gray-800">{selectedPegawaiWork.area_penempatan || '-'}</p>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Alamat Detail Lokasi Penempatan</span>
+                    <p className="font-medium text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">{selectedPegawaiWork.alamat_area_penempatan || '-'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-xs font-bold text-gray-400 uppercase block">Masa Kerja</span>
+                      <p className="font-medium text-gray-800">{selectedPegawaiWork.masa_kerja || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-gray-400 uppercase block">Masa Kontrak</span>
+                      <p className="font-medium text-gray-800">{selectedPegawaiWork.masa_kontrak || '-'}</p>
+                    </div>
+                  </div>
+
+                  {selectedPegawaiWork.surat_tugas && (
+                    <div>
+                      <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Dokumen Surat Tugas Penugasan</span>
+                      <a
+                        href={selectedPegawaiWork.surat_tugas.startsWith('http') ? selectedPegawaiWork.surat_tugas : `/uploads/non-fronting/surat_tugas/${selectedPegawaiWork.surat_tugas}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition-colors shadow-sm"
+                      >
+                        📄 Lihat File PDF Surat Tugas
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end shrink-0">
+                <button onClick={() => setSelectedPegawaiWork(null)} className="px-5 py-2 text-sm font-bold text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors">
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Absensi Realtime */}
+        {showAbsenModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+              <div className={`p-4 text-white font-bold flex justify-between items-center ${absenType === 'Masuk' ? 'bg-indigo-600' : 'bg-emerald-600'}`}>
+                <h3 className="text-lg">📸 Absen {absenType} Supervisor</h3>
+                <button onClick={handleCloseModal} className="text-white hover:text-gray-200 text-xl">✕</button>
+              </div>
+
+              <form onSubmit={submitAbsenRealtime} className="p-6 space-y-5">
+                {/* Lokasi GPS */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <p className="text-xs text-gray-500 font-bold mb-2 uppercase">📍 Lokasi Saat Ini</p>
+                  {isLocating ? (
+                    <div className="flex items-center gap-2 text-sm text-blue-600">
+                      <span className="animate-spin text-xl">⏳</span> Sedang mendeteksi GPS...
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-gray-800">
+                      <p>{absenLocation.address || "Alamat tidak ditemukan"}</p>
+                      <p className="text-xs text-gray-500 mt-1">Lat: {absenLocation.lat} | Lng: {absenLocation.lng}</p>
+                    </div>
+                  )}
+                  <button 
+                    type="button" 
+                    onClick={getGeoLocation} 
+                    className="mt-3 text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-100"
+                  >
+                    🔄 Refresh Lokasi
+                  </button>
+                </div>
+
+                {/* Live Camera */}
+                <div>
+                  <p className="text-xs text-gray-500 font-bold mb-2 uppercase">📸 Foto Selfie Absen</p>
+                  
+                  {absenPhotoPreview ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-300">
+                      <img src={absenPhotoPreview} alt="Preview Absen" className="w-full h-48 object-cover" />
+                      <button 
+                        type="button"
+                        onClick={() => { setAbsenPhoto(null); setAbsenPhotoPreview(null); }}
+                        className="absolute top-2 right-2 bg-red-500 text-white text-xs px-3 py-1.5 rounded-md font-bold"
+                      >
+                        🗑️ Ulangi
+                      </button>
+                    </div>
+                  ) : isCameraOpen ? (
+                    <div className="relative rounded-xl overflow-hidden border-2 border-indigo-300 bg-black flex flex-col items-center">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        className="w-full h-48 object-cover transform scale-x-[-1]" 
+                      />
+                      <div className="absolute bottom-2 flex gap-2 w-full px-4 justify-center">
+                        <button type="button" onClick={stopCamera} className="bg-red-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex-1">Batal</button>
+                        <button type="button" onClick={capturePhoto} className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-lg flex-1">📸 Ambil Foto</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button"
+                      onClick={startCamera}
+                      className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-indigo-50 transition"
+                    >
+                      <span className="text-4xl mb-2">🤳</span>
+                      <span className="text-sm font-semibold text-gray-600">Buka Kamera Selfie</span>
+                    </button>
+                  )}
+                  <canvas ref={canvasRef} className="hidden" />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isLocating || !absenPhoto || isSubmittingAbsen}
+                  className={`w-full text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50 ${absenType === 'Masuk' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                >
+                  {isSubmittingAbsen ? 'Memproses...' : `Kirim Absen ${absenType} Sekarang ➤`}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* MODAL BACA & BALAS LAPORAN */}
         {selectedLaporan && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
@@ -1001,7 +1823,6 @@ function SupervisorDashboardContent() {
                   </div>
                 </div>
 
-                {/* Gunakan optional chaining (?.) di sini */}
                 {selectedLaporan?.file_name && (
                   <div className="mb-6">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Lampiran Foto Laporan</h4>
@@ -1059,5 +1880,5 @@ function SupervisorDashboardContent() {
 }
 
 export default function SupervisorDashboard() {
-  return <SupervisorDashboardContent />
+  return <SupervisorDashboardContent />;
 }

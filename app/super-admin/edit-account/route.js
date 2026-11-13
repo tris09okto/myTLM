@@ -3,6 +3,17 @@ import bcrypt from 'bcryptjs';
 import { pool } from "@/lib/db";
 import nodemailer from "nodemailer";
 import { cleanupStoredUploads, storeFileUpload } from "@/lib/uploads";
+import path from "node:path"; // 1. Import modul path untuk membuang ekstensi bawaan
+
+// Helper Sanitasi untuk menghapus ekstensi ganda (.jpg.jpg -> .jpg)
+// Serta aman menangani multiple file yang dipisahkan koma (pada st_file)
+const sanitizeDoubleExtension = (fileRef) => {
+  if (!fileRef || String(fileRef).trim() === '') return '';
+  return String(fileRef)
+    .split(',')
+    .map(item => item.trim().replace(/(\.[a-zA-Z0-9]+)\1$/i, '$1'))
+    .join(',');
+};
 
 // Konfigurasi Email
 const transporter = nodemailer.createTransport({
@@ -61,34 +72,41 @@ export async function POST(req) {
       passwordHash = await bcrypt.hash(rawPassword, 10);
     }
 
-    // 3. Penanganan Upload File Baru (Jika ada)
-    let idCardName = oldData.idcard_file;
+    // 3. Penanganan Upload ID Card (Gunakan sanitasi untuk data lama & baru)
+    let idCardName = sanitizeDoubleExtension(oldData.idcard_file);
     const idCardFile = formData.get("idcard_file");
     if (idCardFile instanceof File && idCardFile.name && idCardFile.name.trim() !== "" && idCardFile.size > 0) {
+      // Ambil nama file TANPA ekstensi agar tidak terduplikasi
+      const cleanIdCardName = path.parse(idCardFile.name).name.replace(/\s+/g, "_");
+
       const stored = await storeFileUpload({
         file: idCardFile,
         folder: "",
-        localFileName: `idcard_${Date.now()}_${idCardFile.name.replace(/\s+/g, "_")}`,
+        localFileName: `idcard_${Date.now()}_${cleanIdCardName}`,
       });
       uploads.push(stored);
-      idCardName = stored.reference;
+      idCardName = sanitizeDoubleExtension(stored.reference);
     }
 
-    // Penanganan Surat Tugas Baru (Jika ada)
-    let stFileString = oldData.st_file;
+    // Penanganan Surat Tugas Baru (Support Multiple Files & Sanitasi Ekstensi)
+    let stFileString = sanitizeDoubleExtension(oldData.st_file);
     const stFiles = formData.getAll("st_file");
-    const validStFiles = stFiles.filter(f => f instanceof File && f.name.trim() !== "" && f.size > 0).slice(0, 3);
+    const validStFiles = stFiles.filter(f => f instanceof File && f.name && f.name.trim() !== "" && f.size > 0).slice(0, 3);
     
     if (validStFiles.length > 0) {
       const savedStFileNames = [];
       for (const file of validStFiles) {
+        // Ambil nama file TANPA ekstensi agar tidak terduplikasi
+        const cleanStName = path.parse(file.name).name.replace(/\s+/g, "_");
+
         const stored = await storeFileUpload({
           file,
           folder: "",
-          localFileName: `st_${Date.now()}_${file.name.replace(/\s+/g, "_")}`,
+          localFileName: `st_${Date.now()}_${cleanStName}`,
+          resourceType: "raw",
         });
         uploads.push(stored);
-        savedStFileNames.push(stored.reference);
+        savedStFileNames.push(sanitizeDoubleExtension(stored.reference));
       }
       stFileString = savedStFileNames.join(",");
     }
@@ -97,7 +115,7 @@ export async function POST(req) {
     await connection.beginTransaction();
     transactionStarted = true;
 
-    // Update tabel users (Gunakan oldData.username untuk pencarian WHERE agar aman jika username diubah)
+    // Update tabel users
     await connection.query(
       "UPDATE users SET username = ?, password = ? WHERE username = ?", 
       [username, passwordHash, oldData.username]
@@ -117,7 +135,7 @@ export async function POST(req) {
     connection.release();
     connection = null;
 
-    // 5. Kirim Email Notifikasi (Deklarasi hanya 1 kali di sini)
+    // 5. Kirim Email Notifikasi
     const usernameChanged = username !== oldData.username;
     const emailChanged = email !== oldData.email;
     const passwordChanged = rawPassword && rawPassword.trim() !== "";
@@ -134,7 +152,6 @@ export async function POST(req) {
             <ul>
               ${usernameChanged ? `<li>Username baru: <b>${username}</b> (Sebelumnya: ${oldData.username})</li>` : ''}
               ${emailChanged ? `<li>Email baru: <b>${email}</b></li>` : ''}
-              {/* Tampilkan rawPassword jika password diubah */}
               ${passwordChanged ? `<li>Password baru: <b>${rawPassword}</b></li>` : ''}
             </ul>
             <p style="color:red;">*Harap login dengan kredensial terbaru Anda dan jaga kerahasiaan password ini.</p>
