@@ -2121,6 +2121,30 @@ function DashboardContent() {
   const [editSupervisor, setEditSupervisor] = useState("");
 
   const [nikValue, setNikValue] = useState(selectedData?.nik || "");
+  const [searchSupervisor, setSearchSupervisor] = useState("");
+  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false);
+
+  const fetchSupervisors = async () => {
+    setIsLoadingSupervisors(true);
+    try {
+      const res = await fetch("/api/spv/list-data");
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const result = await res.json();
+
+      if (result.success !== undefined) {
+        setSupervisors(Array.isArray(result.data) ? result.data : []);
+      } else if (Array.isArray(result)) {
+        setSupervisors(result);
+      } else {
+        setSupervisors([]);
+      }
+    } catch (error) {
+      console.error("Gagal mengambil data supervisor:", error);
+      setSupervisors([]);
+    } finally {
+      setIsLoadingSupervisors(false);
+    }
+  };
 
   useEffect(() => {
     setNikValue(selectedData?.nik || "");
@@ -2147,59 +2171,111 @@ function DashboardContent() {
   // 1. State untuk Edit & Delete
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [editingSpv, setEditingSpv] = useState<Supervisor | null>(null);
+  const [deletingSpv, setDeletingSpv] = useState<Supervisor | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [pasFotoFile, setPasFotoFile] = useState<File | null>(null);
+  const [suratTugasFile, setSuratTugasFile] = useState<File | null>(null);
+  const [pasFotoPreview, setPasFotoPreview] = useState<string>("");
+
   const [editForm, setEditForm] = useState({
     nama: "",
+    nik: "",
+    jenis_kelamin: "",
+    tempat_lahir: "",
+    tanggal_lahir: "",
+    golongan_darah: "",
+    status_pernikahan: "",
+    domisili: "",
     email: "",
-    username: "",
-    no_hp: "",
+    no_whatsapp: "",
     mitra_id: "",
-    unit_kerja: "",
-    password: "", // Selalu kosong di awal saat buka modal edit
+    area_penempatan: "",
+    alamat_area_penempatan: "",
+    masa_kerja: "",
+    tanggal_mulai_kerja: "",
+    masa_kontrak: "",
+    status: "AKTIF",
+    username: "",
+    password: "",
+    pas_foto: "",
+    surat_tugas: "",
   });
-  const [deletingSpv, setDeletingSpv] = useState<Supervisor | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 2. Buka Modal Edit & Normalisasi Nilai Dropdown ke String
-  const handleOpenEdit = (spv: Supervisor) => {
+  const handleOpenEdit = (spv: any) => {
     setEditingSpv(spv);
+    setPasFotoFile(null);
+    setSuratTugasFile(null);
+    setPasFotoPreview(spv.pas_foto || "");
+
     setEditForm({
-      nama: spv.nama ?? "",
-      email: spv.email ?? "",
-      username: spv.username ?? "",
-      no_hp: spv.no_hp ?? "",
-      mitra_id: spv.mitra_id ? String(spv.mitra_id) : "",
-      unit_kerja: spv.unit_kerja ?? "",
+      nama: spv.nama || "",
+      nik: spv.nik || "",
+      jenis_kelamin: spv.jenis_kelamin || "",
+      tempat_lahir: spv.tempat_lahir || "",
+      tanggal_lahir: spv.tanggal_lahir
+        ? String(spv.tanggal_lahir).split("T")[0]
+        : "",
+      golongan_darah: spv.golongan_darah || "",
+      status_pernikahan: spv.status_pernikahan || "",
+      domisili: spv.domisili || "",
+      email: spv.email || "",
+      no_whatsapp: spv.no_whatsapp || spv.no_hp || "",
+      mitra_id:
+        spv.id_mitra !== null && spv.id_mitra !== undefined
+          ? String(spv.id_mitra)
+          : spv.mitra_id !== null && spv.mitra_id !== undefined
+          ? String(spv.mitra_id)
+          : "",
+      area_penempatan: spv.area_penempatan || "",
+      alamat_area_penempatan: spv.alamat_area_penempatan || "",
+      masa_kerja: spv.masa_kerja || "",
+      tanggal_mulai_kerja: spv.tanggal_mulai_kerja
+        ? String(spv.tanggal_mulai_kerja).split("T")[0]
+        : "",
+      masa_kontrak: spv.masa_kontrak || "",
+      status: spv.status || "AKTIF",
+      username: spv.username || "",
       password: "",
+      pas_foto: spv.pas_foto || "",
+      surat_tugas: spv.surat_tugas || "",
     });
   };
 
-  // 3. Submit Perubahan Supervisor
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSpv) return;
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/supervisors/${editingSpv.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+      const formData = new FormData();
+      Object.entries(editForm).forEach(([key, value]) => {
+        formData.append(key, value ?? "");
       });
-      const result = await res.json();
 
-      if (!res.ok || !result.success) {
-        alert(result.message || "Gagal memperbarui data supervisor");
-        return;
+      if (pasFotoFile) {
+        formData.append("pas_foto_file", pasFotoFile);
+      }
+      if (suratTugasFile) {
+        formData.append("surat_tugas_file", suratTugasFile);
       }
 
-      // Update baris terkait secara langsung di state tabel
-      setSupervisors((prev) =>
-        prev.map((item) => (item.id === editingSpv.id ? result.data : item))
-      );
-      setEditingSpv(null);
+      const res = await fetch(`/api/spv/${editingSpv.id}`, {
+        method: "PUT",
+        body: formData, // Jangan set Content-Type manual agar boundary otomatis diisi browser
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setEditingSpv(null);
+        setPasFotoFile(null);
+        setSuratTugasFile(null);
+        fetchSupervisors();
+      } else {
+        alert(data.message || "Gagal memperbarui data supervisor");
+      }
     } catch (err) {
-      console.error(err);
-      alert("Terjadi kesalahan jaringan saat menyimpan perubahan");
+      console.error("Error updating supervisor:", err);
+      alert("Terjadi kesalahan jaringan saat memperbarui data.");
     } finally {
       setIsSubmitting(false);
     }
@@ -2395,6 +2471,9 @@ function DashboardContent() {
     }
     if (["list-unit-kerja", "create-non-fronting"].includes(currentView)) {
       fetchNonFrontingData();
+    }
+    if (currentView === "list-supervisor") {
+      fetchSupervisors();
     }
   }, [currentView]);
 
@@ -2794,6 +2873,50 @@ function DashboardContent() {
     }
   };
 
+  const resolveFileUrl = (
+    ref?: string | null,
+    defaultFolder?: "pas_foto" | "surat_tugas"
+  ): string => {
+    if (!ref) return "";
+    const trimmed = ref.trim();
+    if (!trimmed) return "";
+
+    if (
+      trimmed.startsWith("http://") ||
+      trimmed.startsWith("https://") ||
+      trimmed.startsWith("blob:") ||
+      trimmed.startsWith("/")
+    ) {
+      return trimmed;
+    }
+
+    if (trimmed.startsWith("uploads/")) {
+      return `/${trimmed}`;
+    }
+    if (
+      trimmed.startsWith("pas_foto/") ||
+      trimmed.startsWith("surat_tugas/")
+    ) {
+      return `/uploads/${trimmed}`;
+    }
+
+    return defaultFolder ? `/uploads/${defaultFolder}/${trimmed}` : `/${trimmed}`;
+  };
+
+  const getFileNameFromUrl = (url?: string | null): string => {
+    if (!url) return "";
+    const cleanUrl = url.split("?")[0].split("#")[0];
+    const lastSlashIndex = cleanUrl.lastIndexOf("/");
+    const rawName =
+      lastSlashIndex >= 0 ? cleanUrl.substring(lastSlashIndex + 1) : cleanUrl;
+
+    try {
+      return decodeURIComponent(rawName);
+    } catch {
+      return rawName;
+    }
+  };
+
   const handleStChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 3) {
@@ -3110,6 +3233,19 @@ function DashboardContent() {
               </button>
             </li>
 
+            <li>
+              <button
+                onClick={() => setCurrentView("list-supervisor")}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors ${
+                  currentView === "list-supervisor"
+                    ? "bg-gray-800 text-white font-bold"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                List Supervisor
+              </button>
+            </li>
+
             <li className="mt-2">
               <button
                 onClick={() => setIsUnitKerjaMenuOpen(!isUnitKerjaMenuOpen)}
@@ -3174,6 +3310,7 @@ function DashboardContent() {
             {currentView === "create-non-fronting" && "Pembuatan Akun Non-Fronting"}
             {currentView === "edit-non-fronting" && "Edit Data Pegawai Non-Fronting"}
             {currentView === "create-mitra" && "Manajemen Data Mitra"}
+            {currentView === "list-supervisor" && "Manajemen Data Supervisor"}
             {currentView === "list-unit-kerja" && `Data Pegawai - ${selectedUnitKerja || "Unit Kerja"}`}
           </h1>
           <span className="text-sm text-gray-600">
@@ -3225,6 +3362,758 @@ function DashboardContent() {
         {currentView === "create-leader" && <CreateLeaderView />}
 
         {currentView === "create-mitra" && <CreateMitraView />}
+
+        {currentView === "list-supervisor" && (
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-blue-600">
+                  Daftar Supervisor Terdaftar
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Kelola akun supervisor, penempatan mitra, dan unit kerja.
+                </p>
+              </div>
+              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                <input
+                  type="text"
+                  value={searchSupervisor}
+                  onChange={(e) => setSearchSupervisor(e.target.value)}
+                  placeholder="Cari nama, username, email, unit..."
+                  className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={fetchSupervisors}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                >
+                  🔄 Muat Ulang
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap border-collapse">
+                <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+                  <tr>
+                    <th className="px-6 py-4 text-center">No</th>
+                    <th className="px-6 py-4">Nama Supervisor</th>
+                    <th className="px-6 py-4">Username / Email</th>
+                    <th className="px-6 py-4">No. HP</th>
+                    <th className="px-6 py-4">Mitra</th>
+                    <th className="px-6 py-4">Unit Kerja</th>
+                    <th className="px-6 py-4 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
+                  {isLoadingSupervisors ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-6 py-10 text-center text-gray-400 animate-pulse"
+                      >
+                        Memuat data supervisor...
+                      </td>
+                    </tr>
+                  ) : (() => {
+                    const filteredSpv = supervisors.filter((spv) => {
+                      if (!searchSupervisor) return true;
+                      const kw = searchSupervisor.toLowerCase();
+                      return (
+                        spv.nama?.toLowerCase().includes(kw) ||
+                        spv.username?.toLowerCase().includes(kw) ||
+                        spv.email?.toLowerCase().includes(kw) ||
+                        spv.unit_kerja?.toLowerCase().includes(kw)
+                      );
+                    });
+
+                    if (filteredSpv.length === 0) {
+                      return (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            className="px-6 py-12 text-center text-gray-500"
+                          >
+                            Belum ada data supervisor terdaftar.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filteredSpv.map((spv, index) => {
+                      const mitraObj = mitraOptions.find(
+                        (m) => String(m.id) === String(spv.mitra_id)
+                      );
+
+                      return (
+                        <tr
+                          key={spv.id || index}
+                          className="hover:bg-blue-50/30 transition-colors"
+                        >
+                          <td className="px-6 py-4 text-center font-medium">
+                            {index + 1}
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-gray-900">
+                            {spv.nama || "-"}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">
+                            <div className="font-mono text-xs font-semibold text-blue-600">
+                              {spv.username ? `@${spv.username}` : "-"}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {spv.email || "-"}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">
+                            {spv.no_hp || "-"}
+                          </td>
+                          <td className="px-6 py-4 text-gray-700">
+                            {mitraObj ? mitraObj.nama_mitra : "-"}
+                          </td>
+                          <td className="px-6 py-4">
+                            {spv.unit_kerja ? (
+                              <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-xs font-medium border border-indigo-100">
+                                {spv.unit_kerja}
+                              </span>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(spv)}
+                              className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs mr-2"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingSpv(spv)}
+                              className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs"
+                            >
+                              Hapus
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EDIT SUPERVISOR */}
+        {editingSpv && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
+              <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">
+                    Edit Data Supervisor
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Jabatan: <span className="font-semibold text-blue-600">SUPERVISOR</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingSpv(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleSaveEdit}
+                className="p-6 space-y-6 overflow-y-auto flex-1"
+                autoComplete="off"
+              >
+                {/* BAGIAN 1: DATA PRIBADI */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 border-b pb-2 mb-4">
+                    1. Data Pribadi & Kontak
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Nama Lengkap <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.nama}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, nama: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        NIK (16 Digit) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        maxLength={16}
+                        value={editForm.nik}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, nik: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Jenis Kelamin <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={editForm.jenis_kelamin}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            jenis_kelamin: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Pilih Jenis Kelamin --</option>
+                        <option value="LAKI - LAKI">LAKI - LAKI</option>
+                        <option value="PEREMPUAN">PEREMPUAN</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Status Pernikahan <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={editForm.status_pernikahan}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            status_pernikahan: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Pilih Status Pernikahan --</option>
+                        <option value="LAJANG">LAJANG</option>
+                        <option value="NIKAH">NIKAH</option>
+                        <option value="CERAI">CERAI</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Tempat Lahir <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.tempat_lahir}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            tempat_lahir: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                          Tanggal Lahir <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={editForm.tanggal_lahir}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              tanggal_lahir: e.target.value,
+                            })
+                          }
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                          Gol. Darah
+                        </label>
+                        <select
+                          value={editForm.golongan_darah}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              golongan_darah: e.target.value,
+                            })
+                          }
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">-- Pilih --</option>
+                          <option value="A">A</option>
+                          <option value="B">B</option>
+                          <option value="AB">AB</option>
+                          <option value="O">O</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={editForm.email}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, email: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        No. WhatsApp <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.no_whatsapp}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            no_whatsapp: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Alamat Domisili <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        value={editForm.domisili}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, domisili: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* BAGIAN 2: PENEMPATAN & KONTRAK */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 border-b pb-2 mb-4">
+                    2. Penempatan & Masa Kerja
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Mitra
+                      </label>
+                      <select
+                        value={editForm.mitra_id}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, mitra_id: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Pilih Mitra --</option>
+                        {mitraOptions.map((m: any) => (
+                          <option key={m.id} value={String(m.id)}>
+                            {m.nama_mitra}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Area Penempatan <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.area_penempatan}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            area_penempatan: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Alamat Area Penempatan{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        value={editForm.alamat_area_penempatan}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            alamat_area_penempatan: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Tanggal Mulai Kerja
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.tanggal_mulai_kerja}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            tanggal_mulai_kerja: e.target.value,
+                          })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                          Masa Kerja <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: 8 tahun"
+                          value={editForm.masa_kerja}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              masa_kerja: e.target.value,
+                            })
+                          }
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                          Masa Kontrak
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Contoh: 2 tahun"
+                          value={editForm.masa_kontrak}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              masa_kontrak: e.target.value,
+                            })
+                          }
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Status Akun
+                      </label>
+                      <select
+                        value={editForm.status}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, status: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="AKTIF">AKTIF</option>
+                        <option value="NON-AKTIF">NON-AKTIF</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BAGIAN 3: AKUN LOGIN & DOKUMEN */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 border-b pb-2 mb-4">
+                    3. Kredensial Login & Dokumen Terlampir
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Username <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.username}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, username: e.target.value })
+                        }
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+                        Password Baru
+                        <span className="text-[11px] text-gray-400 font-normal ml-2">
+                          (Kosongkan jika tidak diubah)
+                        </span>
+                      </label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={editForm.password}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, password: e.target.value })
+                        }
+                        placeholder="********"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {/* Upload & Preview Pas Foto */}
+                    <div className="border border-gray-200 rounded-xl p-3.5 bg-gray-50/60">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-semibold text-gray-800">
+                          Pas Foto
+                        </label>
+                        {pasFotoFile ? (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            Foto baru dipilih
+                          </span>
+                        ) : editForm.pas_foto ? (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                            Foto tersimpan
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">Belum ada foto</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3.5">
+                        {pasFotoPreview ? (
+                          <a
+                            href={pasFotoPreview}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Klik untuk melihat ukuran penuh"
+                            className="shrink-0 group relative"
+                          >
+                            <img
+                              src={pasFotoPreview}
+                              alt="Pas Foto Supervisor"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src =
+                                  "https://ui-avatars.com/api/?name=" +
+                                  encodeURIComponent(editForm.nama || "SPV") +
+                                  "&background=E5E7EB&color=374151";
+                              }}
+                              className="w-16 h-16 rounded-lg object-cover border border-gray-300 bg-white group-hover:opacity-90"
+                            />
+                          </a>
+                        ) : (
+                          <div className="w-16 h-16 rounded-lg bg-white border border-dashed border-gray-300 flex items-center justify-center text-[11px] text-gray-400 shrink-0 text-center px-1">
+                            Tidak ada foto
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null;
+                              setPasFotoFile(file);
+                              if (file) {
+                                setPasFotoPreview(URL.createObjectURL(file));
+                              } else {
+                                setPasFotoPreview(editForm.pas_foto || "");
+                              }
+                            }}
+                            className="w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                          />
+                          <div className="mt-1.5 flex items-center gap-3">
+                            {editForm.pas_foto && !pasFotoFile && (
+                              <a
+                                href={editForm.pas_foto}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-medium text-blue-600 hover:underline"
+                              >
+                                Buka foto tersimpan
+                              </a>
+                            )}
+                            {pasFotoFile && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPasFotoFile(null);
+                                  setPasFotoPreview(editForm.pas_foto || "");
+                                }}
+                                className="text-[11px] font-medium text-red-600 hover:underline"
+                              >
+                                Batalkan perubahan foto
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bagian Surat Tugas */}
+                <div className="border border-gray-200 rounded-xl p-3.5 bg-gray-50/60">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-gray-800">
+                      Surat Tugas
+                    </label>
+                    {suratTugasFile ? (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        Dokumen baru dipilih
+                      </span>
+                    ) : editForm.surat_tugas ? (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                        Dokumen tersimpan
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-gray-400">Belum ada dokumen</span>
+                    )}
+                  </div>
+
+                  {/* Kartu Dokumen Tersimpan */}
+                  {editForm.surat_tugas && (
+                    <div className="mb-2.5 flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white border border-gray-200">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate">
+                          {getFileNameFromUrl(editForm.surat_tugas) || "Surat_Tugas_Supervisor"}
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          File saat ini tersimpan di server
+                        </p>
+                      </div>
+                      <a
+                        href={editForm.surat_tugas}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
+                      >
+                        Lihat File
+                      </a>
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setSuratTugasFile(file);
+                    }}
+                    className="w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+
+                  {suratTugasFile && (
+                    <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                      <span className="text-emerald-700 font-medium truncate">
+                        Pengganti: {suratTugasFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSuratTugasFile(null)}
+                        className="text-red-600 font-medium hover:underline shrink-0 ml-2"
+                      >
+                        Batal ganti
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3 border-t mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditingSpv(null)}
+                    disabled={isSubmitting}
+                    className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Menyimpan..." : "Simpan Perubahan"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL KONFIRMASI HAPUS SUPERVISOR */}
+        {deletingSpv && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                Hapus Akun Supervisor
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Apakah Anda yakin ingin menghapus data supervisor{" "}
+                <b className="text-gray-900">{deletingSpv.nama}</b> (
+                {deletingSpv.email || deletingSpv.username})? Tindakan ini tidak
+                dapat dibatalkan.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeletingSpv(null)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? "Menghapus..." : "Ya, Hapus"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {currentView === "upload-qna" && (
           <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
