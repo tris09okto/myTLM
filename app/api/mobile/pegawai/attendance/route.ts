@@ -12,7 +12,7 @@ interface AttendanceRow extends RowDataPacket { waktu_masuk: string | null; wakt
 
 async function currentEmployee(request: Request) {
   const principal = await getMobilePrincipal(request);
-  if (!principal || principal.role !== "pegawai") return null;
+  if (!principal || !["pegawai", "supervisor"].includes(principal.role)) return null;
   const [rows] = await pool.query<EmployeeRow[]>(
     "SELECT nik, nama, unit_kerja FROM data_non_fronting WHERE username = ? LIMIT 1",
     [principal.username],

@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     let nonFronting: ProfileRow[] = [];
     if (!fronting.length) {
       [nonFronting] = await pool.query<ProfileRow[]>(
-        `SELECT nik, nama, jabatan, unit_kerja, area_penempatan, supervisor, pas_foto, surat_tugas
+        `SELECT nik, nama, jabatan, unit_kerja, area_penempatan, supervisor, pas_foto, surat_tugas, tag_lokasi, last_login_at
          FROM data_non_fronting WHERE username = ? LIMIT 1`,
         [principal.username],
       );
