@@ -3,52 +3,72 @@
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { TAB_SESSION_KEY } from "../SessionAutoLogoutGuard";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const router = useRouter();
+
+  // Bersihkan penanda sesi tab saat halaman login pertama kali dibuka
+  useEffect(() => {
+    sessionStorage.removeItem(TAB_SESSION_KEY);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
-    // 1. VALIDASI MANUAL DI FRONTEND SEBELUM MENGIRIM REQUEST
+    // 1. Validasi manual di frontend sebelum mengirim request
     const finalUsername = username.trim();
     if (!finalUsername || !password) {
       setError("Mohon isi username dan password Anda.");
       setIsLoading(false);
-      return; // Hentikan fungsi di sini
+      return;
     }
 
-    // 2. Memanggil fungsi signIn menggunakan state yang sudah terjamin isinya
-    const res = await signIn("credentials", {
-      redirect: false,
-      username: finalUsername,
-      password: password,
-    });
+    const isHttps = window.location.protocol === "https:";
+    const secureFlag = isHttps ? "; Secure" : "";
 
-    if (res?.error) {
-      setError("Username atau password yang Anda masukkan salah.");
+    // 2. Tandai sesi aktif tab & cookie sementara agar middleware mengizinkan redirect di "/"
+    sessionStorage.setItem(TAB_SESSION_KEY, "1");
+    document.cookie = `mytlm_just_logged_in=1; path=/; max-age=15; SameSite=Lax${secureFlag}`;
+
+    try {
+      const res = await signIn("credentials", {
+        redirect: false,
+        username: finalUsername,
+        password: password,
+      });
+
+      if (res?.error) {
+        sessionStorage.removeItem(TAB_SESSION_KEY);
+        document.cookie = `mytlm_just_logged_in=; path=/; max-age=0; SameSite=Lax${secureFlag}`;
+        setError("Username atau password yang Anda masukkan salah.");
+        setIsLoading(false);
+      } else {
+        router.replace("/");
+        router.refresh();
+      }
+    } catch {
+      sessionStorage.removeItem(TAB_SESSION_KEY);
+      document.cookie = `mytlm_just_logged_in=; path=/; max-age=0; SameSite=Lax${secureFlag}`;
+      setError("Terjadi kesalahan koneksi saat mencoba masuk.");
       setIsLoading(false);
-    } else {
-      router.push("/");
-      router.refresh();
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
-        
         {/* Bagian Logo dan Subjudul */}
         <div className="text-center mb-8 flex flex-col items-center">
           <img
-            src="/logo.png" // Ubah path ini sesuai lokasi file logo Anda di folder public
+            src="/logo.png"
             alt="Logo my TLM"
             className="w-24 h-24 object-contain rounded-2xl shadow-sm mb-3"
           />
@@ -95,15 +115,14 @@ export default function LoginPage() {
             type="submit"
             disabled={isLoading}
             className={`w-full py-3 px-4 rounded-lg text-white font-medium transition-all ${
-              isLoading 
-                ? "bg-blue-400 cursor-not-allowed" 
+              isLoading
+                ? "bg-blue-400 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700 active:scale-[0.98]"
             }`}
           >
             {isLoading ? "Memeriksa kredensial..." : "Masuk"}
           </button>
         </form>
-
       </div>
     </div>
   );

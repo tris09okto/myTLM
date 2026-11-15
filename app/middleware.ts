@@ -1,58 +1,111 @@
-import { withAuth } from "next-auth/middleware";
+import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
 
-export default withAuth(
+const authMiddleware = withAuth(
   function middleware(req) {
     const role = req.nextauth.token?.role;
     const path = req.nextUrl.pathname;
 
-    // CETAK LOG INI KE TERMINAL (Bukan di browser)
     console.log(`[Middleware] Akses Path: ${path} | Role terdeteksi: '${role}'`);
 
-    // Proteksi rute Super Admin
     if (path.startsWith("/super-admin") && role !== "super_admin") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute Admin (Super Admin biasanya juga boleh akses ini, sesuaikan logika Anda)
     if (path.startsWith("/admin") && role !== "admin" && role !== "super_admin") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute Pegawai
     if (path.startsWith("/pegawai") && role !== "pegawai") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute Admin Keuangan
     if (path.startsWith("/keuangan") && role !== "keuangan") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute leader
     if (path.startsWith("/leader") && role !== "leader") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute guest
     if (path.startsWith("/guest") && role !== "guest") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // Proteksi rute supervisor
     if (path.startsWith("/supervisor") && role !== "supervisor") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
+    if (path.startsWith("/mitra") && role !== "mitra") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
   },
   {
     callbacks: {
-      // Pastikan token ada agar middleware dijalankan
       authorized: ({ token }) => !!token,
+    },
+    pages: {
+      signIn: "/login",
     },
   }
 );
 
-// Tentukan rute mana saja yang ingin diproteksi oleh middleware
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  const path = req.nextUrl.pathname;
+
+  // Saat mengakses root mytlmapp.com ("/")
+  if (path === "/") {
+    const justLoggedIn = req.cookies.get("mytlm_just_logged_in")?.value === "1";
+
+    // Jika baru saja login dari /login, biarkan app/page.tsx mengarahkan sesuai role
+    if (justLoggedIn) {
+      const response = NextResponse.next();
+      response.cookies.set("mytlm_just_logged_in", "", {
+        maxAge: 0,
+        expires: new Date(0),
+        path: "/",
+      });
+      return response;
+    }
+
+    // Jika akses baru ke mytlmapp.com dengan cookie sesi lama, hapus cookie & paksa ke /login
+    const loginUrl = new URL("/login", req.url);
+    const response = NextResponse.redirect(loginUrl);
+    const isHttps = req.nextUrl.protocol === "https:";
+
+    for (const cookie of req.cookies.getAll()) {
+      if (
+        cookie.name.includes("next-auth.session-token") ||
+        cookie.name.includes("next-auth.callback-url")
+      ) {
+        response.cookies.set(cookie.name, "", {
+          maxAge: 0,
+          expires: new Date(0),
+          path: "/",
+          httpOnly: true,
+          sameSite: "lax",
+          secure: cookie.name.startsWith("__Secure-") || isHttps,
+        });
+      }
+    }
+
+    return response;
+  }
+
+  return authMiddleware(req as NextRequestWithAuth, event);
+}
+
 export const config = {
-  matcher: ["/super-admin/:path*", "/admin/:path*", "/keuangan/:path*", "/pegawai/:path*", "/leader/:path*", "/guest/:path*", "/supervisor/:path*"],
+  matcher: [
+    "/",
+    "/super-admin/:path*",
+    "/admin/:path*",
+    "/keuangan/:path*",
+    "/pegawai/:path*",
+    "/leader/:path*",
+    "/guest/:path*",
+    "/supervisor/:path*",
+    "/mitra/:path*",
+  ],
 };
