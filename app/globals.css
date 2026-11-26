@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f9fafb;
+  --foreground: #111827;
 }
 
 /* stylelint-disable-next-line at-rule-no-unknown */
@@ -37,9 +37,7 @@ body {
   min-height: 100dvh;
 }
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@tailwind base, components, utilities;
 
 @layer base {
   html,
@@ -69,5 +67,23 @@ body {
 
   .pb-safe {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* app/globals.css - Tambahkan di bagian paling bawah */
+@media screen and (max-width: 1023px) {
+  main table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  main input,
+  main select,
+  main textarea {
+    font-size: 16px !important;
   }
 }

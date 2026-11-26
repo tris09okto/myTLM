@@ -33,6 +33,10 @@ const authMiddleware = withAuth(
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
+    if (path.startsWith("/api/guest") && role !== "guest") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
     if (path.startsWith("/supervisor") && role !== "supervisor") {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
