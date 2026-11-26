@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { SessionProvider, useSession, signOut } from "next-auth/react";
+import { useSession, signOut, SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
-import Select from "react-select";
 
+// ==========================================
+// 1. HELPER COMPONENTS (SearchableSelect & Pagination)
+// ==========================================
 interface SearchableSelectProps {
-  name?: string;
-  options?: any[];
-  value?: string;
-  onChange: (val: any) => void;
+  name: string;
+  options: string[];
+  value: string;
+  onChange: (val: string) => void;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -20,2126 +22,622 @@ function SearchableSelect({
   options,
   value,
   onChange,
-  placeholder,
-  required,
-  disabled,
+  placeholder = "Pilih atau ketik...",
+  required = false,
+  disabled = false,
 }: SearchableSelectProps) {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [query, setQuery] = useState(value || "");
+  const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    setQuery(value || "");
+  }, [value]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (
         wrapperRef.current &&
         !wrapperRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
-        setSearchTerm("");
+        setQuery(value || "");
       }
-    }
+    };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [value]);
 
-  const filteredOptions = (options || []).filter((opt: any) =>
-    String(opt).toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredOptions = options.filter((opt) =>
+    opt.toLowerCase().includes(query.toLowerCase())
   );
 
   return (
-    <div
-      ref={wrapperRef}
-      className={`relative w-full ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
-    >
-      <input type="hidden" name={name} value={value} />
-      <div
-        className={`flex items-center w-full p-2 bg-white border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 ${disabled ? "bg-gray-100 cursor-not-allowed" : "cursor-text"}`}
-        onClick={() => {
-          if (!disabled) setIsOpen(true);
-        }}
-      >
-        <input
-          type="text"
-          className="w-full outline-none text-gray-900 bg-transparent text-sm disabled:cursor-not-allowed"
-          placeholder={placeholder}
-          value={isOpen ? searchTerm : value || ""}
-          disabled={disabled}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setSearchTerm(e.target.value);
+    <div ref={wrapperRef} className="relative">
+      <input type="hidden" name={name} value={value} required={required} />
+      <input
+        type="text"
+        value={query}
+        disabled={disabled}
+        placeholder={placeholder}
+        onFocus={() => !disabled && setIsOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setIsOpen(true);
+          if (e.target.value === "") {
             onChange("");
-            setIsOpen(true);
-          }}
-          onFocus={() => {
-            if (!disabled) setIsOpen(true);
-          }}
-          required={required && !value}
-        />
-        <span
-          className="ml-2 text-gray-500 text-xs cursor-pointer"
-          onClick={() => {
-            if (!disabled) setIsOpen(!isOpen);
-          }}
-        >
-          ▼
-        </span>
-      </div>
+          }
+        }}
+        required={required && !value}
+        className="w-full p-2 bg-white text-gray-900 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed outline-none focus:ring-2 focus:ring-blue-500"
+      />
       {isOpen && !disabled && (
-        <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+        <ul className="absolute z-30 w-full mt-1 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg text-sm">
           {filteredOptions.length > 0 ? (
-            filteredOptions.map((opt: any, idx: number) => (
-              <div
+            filteredOptions.map((opt, idx) => (
+              <li
                 key={idx}
-                className="p-2 cursor-pointer hover:bg-blue-100 text-gray-900 text-sm border-b border-gray-50 last:border-0"
                 onClick={() => {
                   onChange(opt);
-                  setSearchTerm("");
+                  setQuery(opt);
                   setIsOpen(false);
                 }}
+                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
+                  opt === value
+                    ? "bg-blue-100 font-semibold text-blue-700"
+                    : "text-gray-800"
+                }`}
               >
                 {opt}
-              </div>
+              </li>
             ))
           ) : (
-            <div className="p-2 text-gray-500 text-sm text-center">
+            <li className="px-3 py-2 text-gray-400 italic">
               Data tidak ditemukan
-            </div>
+            </li>
           )}
-        </div>
+        </ul>
       )}
     </div>
   );
 }
 
-// ==========================================
-// 1. KOMPONEN: CREATE LEADER VIEW
-// ==========================================
-function CreateLeaderView() {
-  const [leaders, setLeaders] = useState<any[]>([]);
-  const [allLeaders, setAllLeaders] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingLeaderId, setEditingLeaderId] = useState<any>(null);
-  const [wilayahData, setWilayahData] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
 
-  const [formData, setFormData] = useState<any>({
-    namaLeader: "",
-    kanwil: [],
-    area: [],
-    penempatan: [],
-    email: "",
-    username: "",
-    password: "",
-    idcard_base64: "",
-    idcard_name: "",
-  });
-
-  const [idCardFile, setIdCardFile] = useState<File | null>(null);
-  const [idCardName, setIdCardName] = useState("");
-  const [existingIdCard, setExistingIdCard] = useState("");
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const selectStyles = {
-    control: (provided: any) => ({
-      ...provided,
-      backgroundColor: "#ffffff",
-      borderColor: "#d1d5db",
-      borderRadius: "0.5rem",
-      padding: "2px",
-      boxShadow: "none",
-      "&:hover": { borderColor: "#9ca3af" },
-    }),
-    input: (provided: any) => ({ ...provided, color: "#111827" }),
-    option: (provided: any, state: any) => ({
-      ...provided,
-      color: "#111827",
-      backgroundColor: state.isFocused ? "#eff6ff" : "#ffffff",
-    }),
-    singleValue: (provided: any) => ({ ...provided, color: "#111827" }),
-    multiValue: (provided: any) => ({
-      ...provided,
-      backgroundColor: "#eff6ff",
-      borderRadius: "4px",
-    }),
-    multiValueLabel: (provided: any) => ({
-      ...provided,
-      color: "#1d4ed8",
-      fontWeight: "500",
-    }),
-    multiValueRemove: (provided: any) => ({
-      ...provided,
-      color: "#1d4ed8",
-      ":hover": { backgroundColor: "#dbeafe", color: "#1e40af" },
-    }),
-    menuList: (provided: any) => ({
-      ...provided,
-      maxHeight: "180px",
-    }),
-  };
-
-  const fetchWilayahOptions = async () => {
-    try {
-      const res = await fetch("/api/get-wilayah");
-      if (res.ok) {
-        const result = await res.json();
-        const dataWilayah = Array.isArray(result.data)
-          ? result.data
-          : Array.isArray(result)
-            ? result
-            : [];
-        setWilayahData(dataWilayah);
-      }
-    } catch (error) {
-      console.error("Error fetching wilayah options:", error);
-    }
-  };
-
-  const handleIdCardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
-        alert("Format ID Card harus JPG atau PNG!");
-        e.target.value = "";
-        setIdCardName("");
-        setIdCardFile(null);
-        return;
-      }
-      setIdCardName(file.name);
-      setIdCardFile(file);
-    }
-  };
-
-  const fetchLeaders = async (keyword = "") => {
-    try {
-      const res = await fetch("/api/leaders");
-      if (res.ok) {
-        const data = await res.json();
-        const listData = Array.isArray(data) ? data : [];
-        setAllLeaders(listData);
-
-        if (keyword) {
-          const lowerKey = keyword.toLowerCase();
-          const filtered = listData.filter(
-            (item) =>
-              (item.nama_leader &&
-                item.nama_leader.toLowerCase().includes(lowerKey)) ||
-              (item.username &&
-                item.username.toLowerCase().includes(lowerKey)) ||
-              (item.email && item.email.toLowerCase().includes(lowerKey))
-          );
-          setLeaders(filtered);
-        } else {
-          setLeaders(listData);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching leaders:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchLeaders();
-    fetchWilayahOptions();
-  }, []);
-
-  const kanwilOptions = Array.from(
-    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean))
-  ).map((k) => ({ label: String(k), value: String(k) }));
-
-  const filteredAreasData =
-    formData.kanwil.length > 0
-      ? wilayahData.filter((item: any) => formData.kanwil.includes(item?.kanwil))
-      : wilayahData;
-
-  const areaOptions = Array.from(
-    new Set(filteredAreasData.map((item) => item?.area).filter(Boolean))
-  ).map((a) => ({ label: String(a), value: String(a) }));
-
-  const filteredPenempatanData =
-    formData.area.length > 0
-      ? wilayahData.filter((item) => formData.area.includes(item?.area))
-      : filteredAreasData;
-
-  const penempatanOptions = Array.from(
-    new Set(
-      filteredPenempatanData.map((item) => item?.penempatan).filter(Boolean)
-    )
-  ).map((p) => ({ label: String(p), value: String(p) }));
-
-  const handleAddClick = () => {
-    setEditingLeaderId(null);
-    setFormData({
-      namaLeader: "",
-      kanwil: [],
-      area: [],
-      penempatan: [],
-      email: "",
-      username: "",
-      password: "",
-      idcard_base64: "",
-      idcard_name: "",
-    });
-
-    setIdCardFile(null);
-    setIdCardName("");
-    setExistingIdCard("");
-
-    setIsModalOpen(true);
-  };
-
-  const handleEditClick = (leader: any) => {
-    const parseJSON = (data: any) => {
-      try {
-        return typeof data === "string"
-          ? JSON.parse(data)
-          : Array.isArray(data)
-            ? data
-            : [];
-      } catch {
-        return [];
-      }
-    };
-
-    setEditingLeaderId(leader.id);
-    setFormData({
-      namaLeader: leader.nama_leader || "",
-      kanwil: parseJSON(leader.kanwil),
-      area: parseJSON(leader.area),
-      penempatan: parseJSON(leader.penempatan),
-      email: leader.email || "",
-      username: leader.username || "",
-      password: "",
-    });
-
-    setIdCardFile(null);
-    setIdCardName("");
-    setExistingIdCard(leader.idcard_file || "");
-
-    setIsModalOpen(true);
-  };
-
-  const fileToBase64 = (file: any) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
-    });
-
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (
-      formData.kanwil.length === 0 ||
-      formData.area.length === 0 ||
-      formData.penempatan.length === 0
-    ) {
-      alert("Kanwil, Area, dan Penempatan minimal harus dipilih 1!");
-      return;
-    }
-
-    try {
-      const payload: Record<string, any> = {
-        namaLeader: formData.namaLeader,
-        kanwil: formData.kanwil,
-        area: formData.area,
-        penempatan: formData.penempatan,
-        email: formData.email,
-        username: formData.username,
-        password: formData.password,
-      };
-
-      if (editingLeaderId) payload.id = editingLeaderId;
-
-      if (idCardFile) {
-        payload.idcard_file = await fileToBase64(idCardFile);
-      }
-
-      const res = await fetch("/api/leaders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        alert(
-          editingLeaderId
-            ? "Data leader berhasil diperbarui!"
-            : "Data leader berhasil ditambahkan!"
-        );
-        setIsModalOpen(false);
-        setEditingLeaderId(null);
-        setFormData({
-          namaLeader: "",
-          kanwil: [],
-          area: [],
-          penempatan: [],
-          email: "",
-          username: "",
-          password: "",
-        });
-
-        setIdCardFile(null);
-        setIdCardName("");
-        setExistingIdCard("");
-
-        fetchLeaders();
-      } else {
-        alert("Gagal menyimpan data.");
-      }
-    } catch (error) {
-      console.error("Error saving data:", error);
-    }
-  };
-
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const XLSX = await import("xlsx");
-        const bstr = event.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws);
-
-        const formattedData = data.map((row: any) => ({
-          namaLeader: row["Nama Leader"] ? String(row["Nama Leader"]) : "-",
-          kanwil: row["Kanwil"]
-            ? String(row["Kanwil"])
-                .split(",")
-                .map((s) => s.trim())
-            : [],
-          area: row["Area"]
-            ? String(row["Area"])
-                .split(",")
-                .map((s) => s.trim())
-            : [],
-          penempatan: row["Penempatan"]
-            ? String(row["Penempatan"])
-                .split(",")
-                .map((s) => s.trim())
-            : [],
-          email: row["Email"] ? String(row["Email"]) : "",
-          username: row["Username"] ? String(row["Username"]) : "",
-          password: row["Password"] ? String(row["Password"]) : "",
-        }));
-
-        const res = await fetch("/api/leaders/upload-excel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formattedData),
-        });
-
-        if (res.ok) {
-          alert("Data Excel berhasil diimport!");
-          fetchLeaders();
-        } else {
-          alert("Gagal mengimport data Excel.");
-        }
-      } catch (error) {
-        alert("Format file Excel tidak sesuai. Pastikan kolom sesuai.");
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const keyword = e.target.value;
-    setSearchQuery(keyword);
-
-    if (keyword.trim() === "") {
-      setLeaders(allLeaders);
-    } else {
-      const lowerKey = keyword.toLowerCase();
-      const filtered = allLeaders.filter(
-        (item) =>
-          (item.nama_leader &&
-            item.nama_leader.toLowerCase().includes(lowerKey)) ||
-          (item.username && item.username.toLowerCase().includes(lowerKey)) ||
-          (item.email && item.email.toLowerCase().includes(lowerKey))
-      );
-      setLeaders(filtered);
-    }
-  };
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: PaginationProps) {
+  if (totalPages <= 1) return null;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-blue-600">
-            Daftar Data Leader
-          </h2>
-          <p className="text-sm text-gray-500">
-            Manajemen data leader (Bisa menangani banyak area/penempatan).
-          </p>
-        </div>
-        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="Cari nama leader, username, atau email..."
-            className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="flex gap-3">
-            <div>
-              <input
-                type="file"
-                accept=".xlsx, .xls"
-                onChange={handleExcelUpload}
-                className="hidden"
-                ref={fileInputRef}
-                id="upload-excel-leader"
-              />
-              <label
-                htmlFor="upload-excel-leader"
-                className="cursor-pointer flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-all"
-              >
-                Upload Excel
-              </label>
-            </div>
-            <button
-              onClick={handleAddClick}
-              className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-all"
-            >
-              + Add Data Leader
-            </button>
-          </div>
-        </div>
+    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 text-sm">
+      <span className="text-gray-500">
+        Halaman <b>{currentPage}</b> dari <b>{totalPages}</b>
+      </span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          &larr; Sebelumnya
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Berikutnya &rarr;
+        </button>
       </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
-            <tr>
-              <th className="px-6 py-4">No</th>
-              <th className="px-6 py-4">Nama Leader</th>
-              <th className="px-6 py-4">Username / Email</th>
-              <th className="px-6 py-4">Kanwil</th>
-              <th className="px-6 py-4">Area</th>
-              <th className="px-6 py-4">Penempatan</th>
-              <th className="px-6 py-4 text-center">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
-            {leaders.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-gray-500"
-                >
-                  Belum ada data leader.
-                </td>
-              </tr>
-            ) : (
-              leaders.map((leader, index) => {
-                const parseJSON = (data: any) => {
-                  try {
-                    return typeof data === "string"
-                      ? JSON.parse(data)
-                      : Array.isArray(data)
-                        ? data
-                        : [];
-                  } catch {
-                    return [];
-                  }
-                };
-                const kanwilArr = parseJSON(leader.kanwil);
-                const areaArr = parseJSON(leader.area);
-                const penempatanArr = parseJSON(leader.penempatan);
-
-                return (
-                  <tr
-                    key={leader.id || index}
-                    className="hover:bg-blue-50/30 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-center font-medium">
-                      {index + 1}
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-gray-900">
-                      {leader.nama_leader || "-"}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      <div>{leader.username || "-"}</div>
-                      <div className="text-xs text-gray-400">
-                        {leader.email || "-"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {kanwilArr?.map((k: string, i: number) => (
-                          <span
-                            key={i}
-                            className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-xs border border-purple-100"
-                          >
-                            {k}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {areaArr?.map((a: string, i: number) => (
-                          <span
-                            key={i}
-                            className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs border border-blue-100"
-                          >
-                            {a}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {penempatanArr?.map((p: string, i: number) => (
-                          <span
-                            key={i}
-                            className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md text-xs border border-amber-100"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handleEditClick(leader)}
-                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1 rounded transition-colors text-xs"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto">
-            <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
-              <h2 className="text-lg font-bold text-gray-800">
-                {editingLeaderId ? "Edit Data Leader" : "Add Data Leader"}
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            <form
-              onSubmit={handleFormSubmit}
-              className="p-6 space-y-4 overflow-y-auto flex-1"
-              autoComplete="off"
-            >
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Nama Leader
-                </label>
-                <input
-                  type="text"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  value={formData.namaLeader}
-                  onChange={(e) =>
-                    setFormData({ ...formData, namaLeader: e.target.value })
-                  }
-                  placeholder="Masukkan nama..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Kanwil
-                </label>
-                <Select
-                  isMulti
-                  options={kanwilOptions}
-                  styles={selectStyles}
-                  placeholder="Pilih Kanwil..."
-                  value={kanwilOptions.filter((opt) =>
-                    formData.kanwil.includes(opt.value)
-                  )}
-                  onChange={(selected) => {
-                    setFormData({
-                      ...formData,
-                      kanwil: selected
-                        ? selected.map((item: any) => item.value)
-                        : [],
-                      area: [],
-                      penempatan: [],
-                    });
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Area
-                </label>
-                <Select
-                  isMulti
-                  options={areaOptions}
-                  styles={selectStyles}
-                  placeholder="Pilih Area..."
-                  value={areaOptions.filter((opt) =>
-                    formData.area.includes(opt.value)
-                  )}
-                  onChange={(selected) => {
-                    setFormData({
-                      ...formData,
-                      area: selected ? selected.map((item: any) => item.value) : [],
-                      penempatan: [],
-                    });
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Penempatan
-                </label>
-                <Select
-                  isMulti
-                  options={penempatanOptions}
-                  styles={selectStyles}
-                  placeholder="Pilih Penempatan..."
-                  value={penempatanOptions.filter((opt) =>
-                    formData.penempatan.includes(opt.value)
-                  )}
-                  onChange={(selected) => {
-                    setFormData({
-                      ...formData,
-                      penempatan: selected
-                        ? selected.map((item: any) => item.value)
-                        : [],
-                    });
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Upload ID Card (JPG/PNG)
-                  {!editingLeaderId && (
-                    <span className="text-red-500 ml-1">*</span>
-                  )}
-                </label>
-                <input
-                  type="file"
-                  name="idcard_file"
-                  accept=".jpg, .jpeg, .png"
-                  onChange={handleIdCardChange}
-                  required={!editingLeaderId}
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {idCardName && (
-                  <p className="mt-1 text-sm text-green-600 font-medium">
-                    File baru: {idCardName}
-                  </p>
-                )}
-                {editingLeaderId && !idCardName && existingIdCard && (
-                  <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded text-xs text-blue-800">
-                    File saat ini: {existingIdCard}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Alamat Email
-                </label>
-                <input
-                  type="email"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  placeholder="name@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Username Akun
-                </label>
-                <input
-                  type="text"
-                  autoComplete="off"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  value={formData.username}
-                  onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
-                  }
-                  placeholder="Masukkan username..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Password Akun
-                  {editingLeaderId && (
-                    <span className="text-[10px] text-gray-400 ml-2">
-                      (Kosongkan jika tidak ingin mengubah)
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  readOnly
-                  onFocus={(e) => e.target.removeAttribute("readOnly")}
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  required={!editingLeaderId}
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  placeholder={
-                    editingLeaderId ? "********" : "Masukkan password baru..."
-                  }
-                />
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  {editingLeaderId ? "Simpan Perubahan" : "Simpan Data"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // ==========================================
-// 2. KOMPONEN: UPLOAD PRODUK & PROMO VIEW
+// 2. SUB-VIEWS (Produk, Pengumuman, Leader, Mitra)
 // ==========================================
 function UploadProdukView() {
-  const [dataList, setDataList] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [editingId, setEditingId] = useState<any>(null);
+  const [judul, setJudul] = useState("");
+  const [deskripsi, setDeskripsi] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: "", text: "" });
 
-  const [formData, setFormData] = useState({
-    tipe: "PRODUK",
-    judul: "",
-    deskripsi: "",
-    berlaku_sampai: "",
-    status: "AKTIF",
-  });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imageName, setImageName] = useState("");
-  const [existingImage, setExistingImage] = useState("");
-
-  const fetchData = async () => {
-    try {
-      const res = await fetch("/api/produk-promo/create");
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success !== undefined) {
-          setDataList(Array.isArray(result.data) ? result.data : []);
-        } else {
-          setDataList(Array.isArray(result) ? result : []);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching produk/promo data:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleOpenModal = (item: any = null) => {
-    if (item) {
-      setEditingId(item.id);
-      setFormData({
-        tipe: item.tipe || "PRODUK",
-        judul: item.judul || "",
-        deskripsi: item.deskripsi || "",
-        berlaku_sampai: item.berlaku_sampai
-          ? item.berlaku_sampai.split("T")[0]
-          : "",
-        status: item.status || "AKTIF",
-      });
-      setExistingImage(item.gambar_file || "");
-    } else {
-      setEditingId(null);
-      setFormData({
-        tipe: "PRODUK",
-        judul: "",
-        deskripsi: "",
-        berlaku_sampai: "",
-        status: "AKTIF",
-      });
-      setExistingImage("");
-    }
-    setImageFile(null);
-    setImageName("");
-    setIsModalOpen(true);
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
-        alert("Format gambar harus JPG atau PNG!");
-        e.target.value = "";
-        setImageName("");
-        setImageFile(null);
-        return;
-      }
-      setImageName(file.name);
-      setImageFile(file);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    const submitData = new FormData();
-    Object.entries(formData).forEach(([key, value]) =>
-      submitData.append(key, value)
-    );
-
-    if (editingId) submitData.append("id", editingId);
-    if (imageFile) submitData.append("gambar_file", imageFile);
+    if (!file) return;
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    const formData = new FormData();
+    formData.append("judul", judul);
+    formData.append("deskripsi", deskripsi);
+    formData.append("file", file);
 
     try {
-      const endpoint = editingId
-        ? "/api/produk-promo/update"
-        : "/api/produk-promo/create";
-      const res = await fetch(endpoint, {
+      const res = await fetch("/super-admin/upload-produk", {
         method: "POST",
-        body: submitData,
+        body: formData,
       });
-
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success || res.status === 200) {
-          alert(
-            editingId
-              ? "Data berhasil diperbarui!"
-              : "Data berhasil ditambahkan!"
-          );
-          setIsModalOpen(false);
-          fetchData();
-        } else {
-          alert(result.message || "Gagal menyimpan data ke database.");
-        }
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: "success", text: data.message || "Produk berhasil diunggah!" });
+        setJudul("");
+        setDeskripsi("");
+        setFile(null);
       } else {
-        alert(`Terjadi kesalahan pada server (Status: ${res.status})`);
+        setMsg({ type: "error", text: data.message || "Gagal mengunggah produk." });
       }
-    } catch (error) {
-      console.error("Submit error:", error);
-      alert("Terjadi kesalahan jaringan saat menyimpan data.");
+    } catch {
+      setMsg({ type: "error", text: "Terjadi kesalahan sistem." });
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string, judul: string) => {
-    if (confirm(`Yakin ingin menghapus ${judul}?`)) {
-      try {
-        const res = await fetch("/api/produk-promo/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
-
-        if (res.ok) {
-          alert("Data berhasil dihapus!");
-          fetchData();
-        } else {
-          alert("Gagal menghapus data dari database.");
-        }
-      } catch (error) {
-        console.error("Delete error:", error);
-        alert("Terjadi kesalahan jaringan saat menghapus data.");
-      }
+      setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-lg font-semibold text-blue-600">
-            Manajemen Produk & Promo
-          </h2>
-          <p className="text-sm text-gray-500">
-            Kelola katalog produk dan informasi promo terkini.
-          </p>
-        </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors text-sm"
+    <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+      <h2 className="text-lg font-semibold text-blue-600 mb-2">
+        Upload Produk / Promo
+      </h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Unggah informasi produk atau promo terbaru untuk tim Fronting.
+      </p>
+      {msg.text && (
+        <div
+          className={`mb-4 p-3 rounded-lg text-sm font-medium ${
+            msg.type === "success"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
         >
-          + Tambah Data
-        </button>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
-            <tr>
-              <th className="px-6 py-4">No</th>
-              <th className="px-6 py-4">Tipe</th>
-              <th className="px-6 py-4">Judul</th>
-              <th className="px-6 py-4">Status & Masa Berlaku</th>
-              <th className="px-6 py-4 text-center">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
-            {dataList.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-6 py-10 text-center text-gray-500"
-                >
-                  Belum ada data Produk / Promo.
-                </td>
-              </tr>
-            ) : (
-              dataList.map((item, index) => (
-                <tr
-                  key={item.id}
-                  className="hover:bg-blue-50/30 transition-colors"
-                >
-                  <td className="px-6 py-4 text-center">{index + 1}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-bold ${item.tipe === "PROMO" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"}`}
-                    >
-                      {item.tipe}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-gray-900 truncate max-w-xs">
-                    {item.judul}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col gap-1">
-                      <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded w-max ${item.status === "AKTIF" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
-                      >
-                        {item.status}
-                      </span>
-                      {item.tipe === "PROMO" && item.berlaku_sampai && (
-                        <span className="text-xs text-gray-500 font-medium">
-                          s.d{" "}
-                          {new Date(item.berlaku_sampai).toLocaleDateString(
-                            "id-ID"
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => handleOpenModal(item)}
-                      className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs mr-2"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.judul)}
-                      className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs"
-                    >
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
-              <h2 className="text-lg font-bold text-gray-800">
-                {editingId ? "Edit Data" : "Tambah Data Baru"}
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSubmit}
-              className="p-6 space-y-4 overflow-y-auto flex-1"
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Kategori Data <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.tipe}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tipe: e.target.value })
-                    }
-                    required
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="PRODUK">Produk</option>
-                    <option value="PROMO">Promo / Campaign</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Status <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    required
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="AKTIF">Aktif (Tampilkan)</option>
-                    <option value="TIDAK AKTIF">
-                      Tidak Aktif (Sembunyikan)
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Judul {formData.tipe} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.judul}
-                  onChange={(e) =>
-                    setFormData({ ...formData, judul: e.target.value })
-                  }
-                  required
-                  placeholder="Masukkan judul menarik..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Deskripsi Lengkap <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={4}
-                  value={formData.deskripsi}
-                  onChange={(e) =>
-                    setFormData({ ...formData, deskripsi: e.target.value })
-                  }
-                  required
-                  placeholder="Syarat, ketentuan, atau spesifikasi detail..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                ></textarea>
-              </div>
-
-              {formData.tipe === "PROMO" && (
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Berlaku Sampai <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.berlaku_sampai}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        berlaku_sampai: e.target.value,
-                      })
-                    }
-                    required
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Upload Gambar {formData.tipe} (JPG/PNG)
-                  {!editingId && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                <input
-                  type="file"
-                  accept=".jpg, .jpeg, .png"
-                  onChange={handleImageChange}
-                  required={!editingId}
-                  className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1.5 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
-                />
-                {imageName && (
-                  <p className="mt-1 text-xs text-green-600 font-medium">
-                    File baru: {imageName}
-                  </p>
-                )}
-                {editingId && !imageName && existingImage && (
-                  <p className="mt-1 text-xs text-blue-600 font-medium">
-                    File saat ini: {existingImage}
-                  </p>
-                )}
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? "Menyimpan..." : "Simpan Data"}
-                </button>
-              </div>
-            </form>
-          </div>
+          {msg.text}
         </div>
       )}
-    </div>
-  );
-}
-
-// ==========================================
-// 3. KOMPONEN: PENGUMUMAN VIEW
-// ==========================================
-function PengumumanView() {
-  const [dataList, setDataList] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [editingId, setEditingId] = useState<any>(null);
-
-  const [formData, setFormData] = useState({
-    judul: "",
-    isi: "",
-    status: "AKTIF",
-    jenis_pengumuman: "PRODUK_INFORMASI",
-    target_penerima: "ALL",
-  });
-  const [lampiranFile, setLampiranFile] = useState<File | null>(null);
-  const [lampiranName, setLampiranName] = useState("");
-  const [existingLampiran, setExistingLampiran] = useState("");
-
-  const fetchData = async () => {
-    try {
-      const res = await fetch("/api/pengumuman");
-      if (res.ok) {
-        const result = await res.json();
-        setDataList(
-          Array.isArray(result.data)
-            ? result.data
-            : Array.isArray(result)
-              ? result
-              : []
-        );
-      }
-    } catch (error) {
-      console.error("Gagal menarik data pengumuman:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleOpenModal = (item: any = null) => {
-    if (item) {
-      setEditingId(item.id);
-      setFormData({
-        judul: item.judul || "",
-        isi: item.isi || "",
-        status: item.status || "AKTIF",
-        jenis_pengumuman: item.jenis_pengumuman || "PRODUK_INFORMASI",
-        target_penerima: item.target_penerima || "ALL",
-      });
-      setExistingLampiran(item.file_lampiran || "");
-    } else {
-      setEditingId(null);
-      setFormData({
-        judul: "",
-        isi: "",
-        status: "AKTIF",
-        jenis_pengumuman: "PRODUK_INFORMASI",
-        target_penerima: "ALL",
-      });
-      setExistingLampiran("");
-    }
-    setLampiranFile(null);
-    setLampiranName("");
-    setIsModalOpen(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setLampiranName(file.name);
-      setLampiranFile(file);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const submitData = new FormData();
-    Object.entries(formData).forEach(([key, value]) =>
-      submitData.append(key, value)
-    );
-    if (editingId) submitData.append("id", editingId);
-    if (lampiranFile) submitData.append("file_lampiran", lampiranFile);
-
-    try {
-      const endpoint = editingId ? "/api/pengumuman/update" : "/api/pengumuman";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: submitData,
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success) {
-          alert(
-            editingId
-              ? "Pengumuman berhasil diperbarui!"
-              : "Pengumuman berhasil ditambahkan!"
-          );
-          setIsModalOpen(false);
-          fetchData();
-        } else {
-          alert(result.message || "Gagal menyimpan pengumuman.");
-        }
-      } else {
-        alert("Terjadi kesalahan pada server.");
-      }
-    } catch (error) {
-      console.error("Submit error:", error);
-      alert("Terjadi kesalahan jaringan.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string, judul: string) => {
-    if (confirm(`Yakin ingin menghapus pengumuman "${judul}"?`)) {
-      try {
-        const res = await fetch("/api/pengumuman/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
-        if (res.ok) {
-          alert("Pengumuman berhasil dihapus!");
-          fetchData();
-        } else {
-          alert("Gagal menghapus pengumuman.");
-        }
-      } catch (error) {
-        console.error("Delete error:", error);
-      }
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      <div className="flex justify-between items-center mb-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-blue-600">
-            Manajemen Pengumuman
-          </h2>
-          <p className="text-sm text-gray-500">
-            Kelola pengumuman penting untuk pegawai.
-          </p>
-        </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors text-sm"
-        >
-          + Buat Pengumuman
-        </button>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
-            <tr>
-              <th className="px-6 py-4">No</th>
-              <th className="px-6 py-4">Judul Pengumuman</th>
-              <th className="px-6 py-4">Jenis</th>
-              <th className="px-6 py-4">Target Penerima</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4">Tanggal</th>
-              <th className="px-6 py-4 text-center">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
-            {dataList.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-10 text-center text-gray-500"
-                >
-                  Belum ada pengumuman.
-                </td>
-              </tr>
-            ) : (
-              dataList.map((item, index) => (
-                <tr
-                  key={item.id}
-                  className="hover:bg-blue-50/30 transition-colors"
-                >
-                  <td className="px-6 py-4 text-center">{index + 1}</td>
-                  <td className="px-6 py-4 font-semibold text-gray-900 truncate max-w-xs">
-                    {item.judul}
-                  </td>
-                  <td className="px-6 py-4 text-xs font-medium text-gray-600">
-                    {item.jenis_pengumuman === "UMUM" ? (
-                      <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
-                        📢 Umum
-                      </span>
-                    ) : item.jenis_pengumuman === "PRIBADI" ? (
-                      <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
-                        🔒 Pribadi
-                      </span>
-                    ) : (
-                      <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md font-bold text-[10px]">
-                        📦 Produk / Informasi
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-xs font-medium text-gray-600">
-                    {item.target_penerima === "ALL_FRONTING"
-                      ? "Hanya Fronting"
-                      : item.target_penerima === "ALL_NON_FRONTING"
-                        ? "Hanya Non-Fronting"
-                        : "Semua Pegawai"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded ${item.status === "AKTIF" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
-                    >
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-xs text-gray-500">
-                    {item.created_at
-                      ? new Date(item.created_at).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => handleOpenModal(item)}
-                      className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs mr-2"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.judul)}
-                      className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1.5 rounded transition-colors text-xs"
-                    >
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
-              <h2 className="text-lg font-bold text-gray-800">
-                {editingId ? "Edit Pengumuman" : "Buat Pengumuman Baru"}
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSubmit}
-              className="p-6 space-y-4 overflow-y-auto flex-1"
-            >
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Judul Pengumuman <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.judul}
-                  onChange={(e) =>
-                    setFormData({ ...formData, judul: e.target.value })
-                  }
-                  required
-                  placeholder="Masukkan judul pengumuman..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Jenis Pengumuman <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.jenis_pengumuman}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        jenis_pengumuman: e.target.value,
-                      })
-                    }
-                    required
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="PRODUK_INFORMASI">Produk / Informasi</option>
-                    <option value="UMUM">Umum</option>
-                    <option value="PRIBADI">Pribadi</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Status <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    required
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="AKTIF">Aktif</option>
-                    <option value="TIDAK AKTIF">Tidak Aktif</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Target Penerima Pengumuman{" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.target_penerima}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      target_penerima: e.target.value,
-                    })
-                  }
-                  required
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="ALL">
-                    Seluruh Pegawai (Termasuk Fronting & Non-Fronting)
-                  </option>
-                  <option value="ALL_FRONTING">Hanya Pegawai Fronting</option>
-                  <option value="ALL_NON_FRONTING">
-                    Hanya Pegawai Non-Fronting
-                  </option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Isi Pengumuman <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={5}
-                  value={formData.isi}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isi: e.target.value })
-                  }
-                  required
-                  placeholder="Tuliskan isi pengumuman secara lengkap..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Lampiran File (Opsional - PDF/Gambar)
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf, .jpg, .jpeg, .png"
-                  onChange={handleFileChange}
-                  className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-900 text-sm file:mr-4 file:py-1.5 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
-                />
-                {lampiranName && (
-                  <p className="mt-1 text-xs text-green-600 font-medium">
-                    File baru: {lampiranName}
-                  </p>
-                )}
-                {editingId && !lampiranName && existingLampiran && (
-                  <p className="mt-1 text-xs text-blue-600 font-medium">
-                    File saat ini: {existingLampiran}
-                  </p>
-                )}
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? "Menyimpan..." : "Simpan Pengumuman"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ==========================================
-// 4. KOMPONEN: CREATE MITRA VIEW
-// ==========================================
-function CreateMitraView() {
-  const [mitraList, setMitraList] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [editingMitraId, setEditingMitraId] = useState<any>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const [formData, setFormData] = useState({
-    kode_mitra: "",
-    nama_mitra: "",
-    email: "",
-    no_telp: "",
-    alamat_mitra: "",
-    status: "ACTIVE",
-    username: "",
-    password: "",
-  });
-
-  const fetchMitra = async () => {
-    try {
-      const res = await fetch("/api/mitra");
-      if (res.ok) {
-        const result = await res.json();
-        setMitraList(
-          Array.isArray(result.data)
-            ? result.data
-            : Array.isArray(result)
-              ? result
-              : []
-        );
-      }
-    } catch (error: any) {
-      console.error("Gagal menarik data mitra:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchMitra();
-  }, []);
-
-  const handleAddClick = () => {
-    setEditingMitraId(null);
-    setFormData({
-      kode_mitra: "",
-      nama_mitra: "",
-      email: "",
-      no_telp: "",
-      alamat_mitra: "",
-      status: "ACTIVE",
-      username: "",
-      password: "",
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleEditClick = (mitra: any) => {
-    setEditingMitraId(mitra.id);
-    setFormData({
-      kode_mitra: mitra.kode_mitra || "",
-      nama_mitra: mitra.nama_mitra || "",
-      email: mitra.email || "",
-      no_telp: mitra.no_telp || "",
-      alamat_mitra: mitra.alamat_mitra || "",
-      status: mitra.status || "ACTIVE",
-      username: mitra.username || "",
-      password: "",
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleHapusInactive = async (id: any, namaMitra: string) => {
-    if (
-      confirm(
-        `Apakah Anda yakin ingin menonaktifkan status mitra "${namaMitra}"?`
-      )
-    ) {
-      try {
-        const res = await fetch("/api/mitra/update-status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, status: "INACTIVE" }),
-        });
-
-        if (res.ok) {
-          alert("Status mitra berhasil diubah menjadi INACTIVE!");
-          fetchMitra();
-        } else {
-          alert("Gagal mengubah status mitra.");
-        }
-      } catch (error: any) {
-        console.error("Error menonaktifkan mitra:", error);
-        alert("Terjadi kesalahan jaringan.");
-      }
-    }
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const endpoint = editingMitraId
-        ? "/api/mitra/update"
-        : "/api/mitra/create";
-      const payload = editingMitraId
-        ? { ...formData, id: editingMitraId }
-        : formData;
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        alert(
-          editingMitraId
-            ? "Data mitra berhasil diperbarui!"
-            : "Data mitra berhasil ditambahkan!"
-        );
-        setIsModalOpen(false);
-        fetchMitra();
-      } else {
-        const result = await res.json();
-        alert(result.message || "Gagal menyimpan data mitra.");
-      }
-    } catch (error: any) {
-      console.error("Error saving data mitra:", error);
-      alert("Terjadi kesalahan jaringan.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredMitra = mitraList.filter((item) => {
-    if (!searchQuery) return true;
-    const kw = searchQuery.toLowerCase();
-    return (
-      item.nama_mitra?.toLowerCase().includes(kw) ||
-      item.kode_mitra?.toLowerCase().includes(kw) ||
-      item.username?.toLowerCase().includes(kw) ||
-      item.email?.toLowerCase().includes(kw) ||
-      item.alamat_mitra?.toLowerCase().includes(kw)
-    );
-  });
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-blue-600">
-            Daftar Mitra Terdaftar
-          </h2>
-          <p className="text-sm text-gray-500">
-            Kelola data registrasi, akun login, dan alamat mitra perusahaan.
-          </p>
-        </div>
-        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Judul Produk / Promo <span className="text-red-500">*</span>
+          </label>
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setSearchQuery(e.target.value)
-            }
-            placeholder="Cari nama, username, kode, atau alamat..."
-            className="w-full md:w-72 p-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+            value={judul}
+            onChange={(e) => setJudul(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button
-            onClick={handleAddClick}
-            className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-all"
-          >
-            + Add Data Mitra
-          </button>
         </div>
-      </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Deskripsi
+          </label>
+          <textarea
+            rows={3}
+            value={deskripsi}
+            onChange={(e) => setDeskripsi(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            File Poster / Dokumen <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="file"
+            required
+            accept=".jpg,.jpeg,.png,.pdf"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? "Mengunggah..." : "Upload Produk / Promo"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
-            <tr>
-              <th className="px-6 py-4">No</th>
-              <th className="px-6 py-4">Kode Mitra</th>
-              <th className="px-6 py-4">Nama Mitra</th>
-              <th className="px-6 py-4">Username Akun</th>
-              <th className="px-6 py-4">Kontak (Email / Telp)</th>
-              <th className="px-6 py-4">Alamat Mitra</th>
-              <th className="px-6 py-4 text-center">Status</th>
-              <th className="px-6 py-4 text-center">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
-            {filteredMitra.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={8}
-                  className="px-6 py-12 text-center text-gray-500"
-                >
-                  Belum ada data mitra terdaftar.
-                </td>
-              </tr>
-            ) : (
-              filteredMitra.map((mitra: any, index: number) => (
-                <tr
-                  key={mitra.id || index}
-                  className="hover:bg-blue-50/30 transition-colors"
-                >
-                  <td className="px-6 py-4 text-center font-medium">
-                    {index + 1}
-                  </td>
-                  <td className="px-6 py-4 font-mono text-xs font-bold text-gray-700">
-                    {mitra.kode_mitra || "-"}
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-gray-900">
-                    {mitra.nama_mitra || "-"}
-                  </td>
-                  <td className="px-6 py-4 font-mono text-xs font-semibold text-blue-600">
-                    {mitra.username ? `@${mitra.username}` : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    <div>{mitra.email || "-"}</div>
-                    <div className="text-xs text-gray-400">
-                      {mitra.no_telp || "-"}
-                    </div>
-                  </td>
-                  <td
-                    className="px-6 py-4 text-gray-600 max-w-xs truncate"
-                    title={mitra.alamat_mitra}
-                  >
-                    {mitra.alamat_mitra || "-"}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span
-                      className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${
-                        mitra.status === "ACTIVE"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {mitra.status || "INACTIVE"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => handleEditClick(mitra)}
-                      className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1 rounded transition-colors text-xs mr-2"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleHapusInactive(mitra.id, mitra.nama_mitra)
-                      }
-                      className="bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-3 py-1 rounded transition-colors text-xs"
-                    >
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+function PengumumanView() {
+  const [judul, setJudul] = useState("");
+  const [isi, setIsi] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: "", text: "" });
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto">
-            <div className="flex justify-between items-center p-5 bg-gray-50 border-b shrink-0">
-              <h2 className="text-lg font-bold text-gray-800">
-                {editingMitraId ? "Edit Data Mitra" : "Add Data Mitra Baru"}
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
-              >
-                ✕
-              </button>
-            </div>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/super-admin/pengumuman", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ judul, isi }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: "success", text: data.message || "Pengumuman diterbitkan!" });
+        setJudul("");
+        setIsi("");
+      } else {
+        setMsg({ type: "error", text: data.message || "Gagal menerbitkan pengumuman." });
+      }
+    } catch {
+      setMsg({ type: "error", text: "Terjadi kesalahan sistem." });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <form
-              onSubmit={handleFormSubmit}
-              className="p-6 space-y-4 overflow-y-auto flex-1"
-              autoComplete="off"
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Kode Mitra
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={
-                      editingMitraId
-                        ? formData.kode_mitra
-                        : "(Otomatis oleh Sistem)"
-                    }
-                    className="w-full bg-gray-100 text-gray-500 border border-gray-300 rounded-lg p-2.5 text-sm cursor-not-allowed font-mono font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Status <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="INACTIVE">INACTIVE</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Nama Mitra / Perusahaan{" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.nama_mitra}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, nama_mitra: e.target.value })
-                  }
-                  placeholder="Masukkan nama mitra..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Email Kontak <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="mitra@example.com"
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    No. Telepon / WA <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.no_telp}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({ ...formData, no_telp: e.target.value })
-                    }
-                    placeholder="081234567890"
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Username Akun <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    required
-                    value={formData.username}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({ ...formData, username: e.target.value })
-                    }
-                    placeholder="Masukkan username..."
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                    Password Akun
-                    {editingMitraId ? (
-                      <span className="text-[10px] text-gray-400 ml-1 font-normal">
-                        (Kosongkan jika tak ubah)
-                      </span>
-                    ) : (
-                      <span className="text-red-500 ml-0.5">*</span>
-                    )}
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    readOnly
-                    onFocus={(e) => e.target.removeAttribute("readOnly")}
-                    required={!editingMitraId}
-                    value={formData.password}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                    placeholder={
-                      editingMitraId ? "********" : "Masukkan password..."
-                    }
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-                  Alamat Lengkap Mitra <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={formData.alamat_mitra}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setFormData({ ...formData, alamat_mitra: e.target.value })
-                  }
-                  placeholder="Masukkan alamat kantor / operasional mitra..."
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                ></textarea>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? "Menyimpan..." : "Simpan Data Mitra"}
-                </button>
-              </div>
-            </form>
-          </div>
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+      <h2 className="text-lg font-semibold text-blue-600 mb-2">
+        Buat Pengumuman Baru
+      </h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Informasi pengumuman akan ditampilkan di dashboard seluruh pegawai.
+      </p>
+      {msg.text && (
+        <div
+          className={`mb-4 p-3 rounded-lg text-sm font-medium ${
+            msg.type === "success"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
+        >
+          {msg.text}
         </div>
       )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Judul Pengumuman <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            value={judul}
+            onChange={(e) => setJudul(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Isi Pengumuman <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={5}
+            required
+            value={isi}
+            onChange={(e) => setIsi(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? "Menyimpan..." : "Terbitkan Pengumuman"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function CreateLeaderView() {
+  const [namaLeader, setNamaLeader] = useState("");
+  const [kanwil, setKanwil] = useState("");
+  const [area, setArea] = useState("");
+  const [penempatan, setPenempatan] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: "", text: "" });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/super-admin/create-leader", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nama_leader: namaLeader,
+          kanwil,
+          area,
+          penempatan,
+          username,
+          password,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: "success", text: data.message || "Leader berhasil dibuat!" });
+        setNamaLeader("");
+        setKanwil("");
+        setArea("");
+        setPenempatan("");
+        setUsername("");
+        setPassword("");
+      } else {
+        setMsg({ type: "error", text: data.message || "Gagal membuat data leader." });
+      }
+    } catch {
+      setMsg({ type: "error", text: "Terjadi kesalahan sistem." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+      <h2 className="text-lg font-semibold text-blue-600 mb-2">
+        Tambah Data Leader
+      </h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Registrasi akun Leader baru untuk pengelolaan tim Fronting.
+      </p>
+      {msg.text && (
+        <div
+          className={`mb-4 p-3 rounded-lg text-sm font-medium ${
+            msg.type === "success"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
+        >
+          {msg.text}
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Nama Leader <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            value={namaLeader}
+            onChange={(e) => setNamaLeader(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-gray-700">
+              Kanwil <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={kanwil}
+              onChange={(e) => setKanwil(e.target.value)}
+              className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-gray-700">
+              Area <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-gray-700">
+              Penempatan <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={penempatan}
+              onChange={(e) => setPenempatan(e.target.value)}
+              className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-gray-700">
+              Username <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-gray-700">
+              Password <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? "Menyimpan..." : "Simpan Data Leader"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function CreateMitraView() {
+  const [kodeMitra, setKodeMitra] = useState("");
+  const [namaMitra, setNamaMitra] = useState("");
+  const [alamatMitra, setAlamatMitra] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: "", text: "" });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/super-admin/create-mitra", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kode_mitra: kodeMitra,
+          nama_mitra: namaMitra,
+          alamat: alamatMitra,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: "success", text: data.message || "Data Mitra berhasil ditambahkan!" });
+        setKodeMitra("");
+        setNamaMitra("");
+        setAlamatMitra("");
+      } else {
+        setMsg({ type: "error", text: data.message || "Gagal menambah data mitra." });
+      }
+    } catch {
+      setMsg({ type: "error", text: "Terjadi kesalahan sistem." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl border border-gray-100">
+      <h2 className="text-lg font-semibold text-blue-600 mb-2">
+        Tambah Data Mitra
+      </h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Daftarkan mitra perusahaan atau klien penempatan pegawai.
+      </p>
+      {msg.text && (
+        <div
+          className={`mb-4 p-3 rounded-lg text-sm font-medium ${
+            msg.type === "success"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
+        >
+          {msg.text}
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Kode Mitra <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            placeholder="Contoh: MTR-001"
+            value={kodeMitra}
+            onChange={(e) => setKodeMitra(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm font-mono"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Nama Mitra <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            required
+            value={namaMitra}
+            onChange={(e) => setNamaMitra(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1 text-gray-700">
+            Alamat Mitra
+          </label>
+          <textarea
+            rows={3}
+            value={alamatMitra}
+            onChange={(e) => setAlamatMitra(e.target.value)}
+            className="w-full p-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? "Menyimpan..." : "Simpan Data Mitra"}
+        </button>
+      </form>
     </div>
   );
 }
 
 // ==========================================
-// 5. KOMPONEN UTAMA: DASHBOARD CONTENT
+// 3. MAIN DASHBOARD CONTENT
 // ==========================================
 function DashboardContent() {
   const { data: session, status } = useSession();
-  const [isFrontlineOpen, setIsFrontlineOpen] = useState(false);
-  const [currentView, setCurrentView] = useState("welcome");
 
-  const [frontlineList, setFrontlineList] = useState<any[]>([]);
-  const [leadersList, setLeadersList] = useState<any[]>([]);
-  const [selectedData, setSelectedData] = useState<any>(null);
+  // Navigasi & UI States
+  const [currentView, setCurrentView] = useState("welcome");
+  const [isFrontlineOpen, setIsFrontlineOpen] = useState(true);
+  const [isUnitKerjaMenuOpen, setIsUnitKerjaMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Master & Fronting States
   const [wilayahData, setWilayahData] = useState<any[]>([]);
+  const [leadersList, setLeadersList] = useState<any[]>([]);
+  const [frontlineList, setFrontlineList] = useState<any[]>([]);
+  const [selectedData, setSelectedData] = useState<any>(null);
+
+  const [nikValue, setNikValue] = useState("");
   const [selectedKanwil, setSelectedKanwil] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
   const [selectedPenempatan, setSelectedPenempatan] = useState("");
   const [selectedLeader, setSelectedLeader] = useState("");
-
   const [idCardName, setIdCardName] = useState("");
-  const [stNames, setStNames] = useState<any[]>([]);
+  const [stNames, setStNames] = useState<string[]>([]);
   const [qnaFileName, setQnaFileName] = useState("");
 
-  // STATE UPLOAD FEE (EXCEL)
+  // Pagination & Search Fronting
+  const [searchListAkun, setSearchListAkun] = useState("");
+  const [currentPageListAkun, setCurrentPageListAkun] = useState(1);
+  const [searchPenutupanAkun, setSearchPenutupanAkun] = useState("");
+  const [currentPagePenutupanAkun, setCurrentPagePenutupanAkun] = useState(1);
+
+  // Keuangan / Fee States
   const [feeFilterType, setFeeFilterType] = useState("");
   const [feeFilterValue, setFeeFilterValue] = useState("");
   const [feeExcelFile, setFeeExcelFile] = useState<File | null>(null);
   const [isUploadingFee, setIsUploadingFee] = useState(false);
 
-  // STATE LAPORAN & ADUAN (SUPER ADMIN)
+  // Laporan & Aduan States
   const [laporanList, setLaporanList] = useState<any[]>([]);
   const [isLoadingLaporan, setIsLoadingLaporan] = useState(false);
   const [selectedLaporan, setSelectedLaporan] = useState<any>(null);
@@ -2147,67 +645,54 @@ function DashboardContent() {
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [replyMsg, setReplyMsg] = useState({ type: "", text: "" });
 
-  const [currentPageListAkun, setCurrentPageListAkun] = useState(1);
-  const [currentPagePenutupanAkun, setCurrentPagePenutupanAkun] = useState(1);
-  const itemsPerPage = 10;
-
-  const [searchListAkun, setSearchListAkun] = useState("");
-  const [searchPenutupanAkun, setSearchPenutupanAkun] = useState("");
-
+  // Non-Fronting & Unit Kerja States
   const [nonFrontingList, setNonFrontingList] = useState<any[]>([]);
+  const [unitKerjaOptions, setUnitKerjaOptions] = useState<any[]>([]);
+  const [mitraOptions, setMitraOptions] = useState<any[]>([]);
+  const [selectedUnitKerja, setSelectedUnitKerja] = useState("");
   const [searchNonFronting, setSearchNonFronting] = useState("");
+
+  // State khusus Form Create Non-Fronting
+  const [jabatanNonFronting, setJabatanNonFronting] = useState("");
+  const [selectedSupervisorNonFronting, setSelectedSupervisorNonFronting] =
+    useState("");
+  const [selectedUnitKerjaNonFronting, setSelectedUnitKerjaNonFronting] =
+    useState("");
   const [pasFotoName, setPasFotoName] = useState("");
   const [suratTugasName, setSuratTugasName] = useState("");
-  const [unitKerjaOptions, setUnitKerjaOptions] = useState<any[]>([]);
-  const [selectedUnitKerja, setSelectedUnitKerja] = useState<string>("");
-  const [isUnitKerjaMenuOpen, setIsUnitKerjaMenuOpen] = useState<boolean>(false);
 
-  const [jabatanNonFronting, setJabatanNonFronting] = useState("");
+  // State khusus Form Edit Non-Fronting
   const [editFormData, setEditFormData] = useState<any>(null);
-
-  const [mitraOptions, setMitraOptions] = useState<any[]>([]);
-  const [editJabatan, setEditJabatan] = useState("PEGAWAI");
+  const [editJabatan, setEditJabatan] = useState("");
   const [editSupervisor, setEditSupervisor] = useState("");
 
-  const [nikValue, setNikValue] = useState(selectedData?.nik || "");
-  const [searchSupervisor, setSearchSupervisor] = useState("");
+  // Supervisor Management States
+  const [supervisors, setSupervisors] = useState<any[]>([]);
   const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false);
-
-  interface Supervisor {
-    id: number;
-    nama: string;
-    email: string;
-    username?: string;
-    no_hp?: string | null;
-    mitra_id?: number | null;
-    unit_kerja?: string | null;
-  }
-
-  // State untuk Edit & Delete Supervisor
-  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [editingSpv, setEditingSpv] = useState<Supervisor | null>(null);
-  const [deletingSpv, setDeletingSpv] = useState<Supervisor | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [searchSupervisor, setSearchSupervisor] = useState("");
+  const [editingSpv, setEditingSpv] = useState<any>(null);
+  const [deletingSpv, setDeletingSpv] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [pasFotoFile, setPasFotoFile] = useState<File | null>(null);
+  const [pasFotoPreview, setPasFotoPreview] = useState("");
   const [suratTugasFile, setSuratTugasFile] = useState<File | null>(null);
-  const [pasFotoPreview, setPasFotoPreview] = useState<string>("");
-
   const [editForm, setEditForm] = useState({
+    id: "",
     nama: "",
     nik: "",
     jenis_kelamin: "",
+    status_pernikahan: "",
     tempat_lahir: "",
     tanggal_lahir: "",
     golongan_darah: "",
-    status_pernikahan: "",
-    domisili: "",
     email: "",
     no_whatsapp: "",
+    domisili: "",
     mitra_id: "",
     area_penempatan: "",
     alamat_area_penempatan: "",
-    masa_kerja: "",
     tanggal_mulai_kerja: "",
+    masa_kerja: "",
     masa_kontrak: "",
     status: "AKTIF",
     username: "",
@@ -2216,338 +701,90 @@ function DashboardContent() {
     surat_tugas: "",
   });
 
-  const fetchSupervisors = async () => {
-    setIsLoadingSupervisors(true);
+  // ==========================================
+  // 4. DATA FETCHERS & EFFECTS
+  // ==========================================
+  const fetchFrontlineData = async () => {
     try {
-      const res = await fetch("/api/spv/list-data");
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const result = await res.json();
-
-      if (result.success !== undefined) {
-        setSupervisors(Array.isArray(result.data) ? result.data : []);
-      } else if (Array.isArray(result)) {
-        setSupervisors(result);
-      } else {
-        setSupervisors([]);
+      const res = await fetch("/api/get-fronting/search");
+      const data = await res.json();
+      if (data.success) {
+        setFrontlineList(data.accounts || []);
+        if (data.wilayah) setWilayahData(data.wilayah);
+        if (data.leaders) setLeadersList(data.leaders);
       }
     } catch (error) {
-      console.error("Gagal mengambil data supervisor:", error);
-      setSupervisors([]);
-    } finally {
-      setIsLoadingSupervisors(false);
+      console.error("Error fetching frontline data:", error);
     }
   };
 
-  useEffect(() => {
-    setNikValue(selectedData?.nik || "");
-  }, [selectedData, currentView]);
-
-  useEffect(() => {
-    if (editFormData) {
-      const currentJab = editFormData.jabatan || "PEGAWAI";
-      setEditJabatan(currentJab);
-      setEditSupervisor(
-        currentJab.toUpperCase() === "SUPERVISOR"
-          ? ""
-          : editFormData.supervisor || ""
-      );
-    }
-  }, [editFormData]);
-
-  const handleOpenEdit = (spv: any) => {
-    setEditingSpv(spv);
-    setPasFotoFile(null);
-    setSuratTugasFile(null);
-    setPasFotoPreview(spv.pas_foto || "");
-
-    setEditForm({
-      nama: spv.nama || "",
-      nik: spv.nik || "",
-      jenis_kelamin: spv.jenis_kelamin || "",
-      tempat_lahir: spv.tempat_lahir || "",
-      tanggal_lahir: spv.tanggal_lahir
-        ? String(spv.tanggal_lahir).split("T")[0]
-        : "",
-      golongan_darah: spv.golongan_darah || "",
-      status_pernikahan: spv.status_pernikahan || "",
-      domisili: spv.domisili || "",
-      email: spv.email || "",
-      no_whatsapp: spv.no_whatsapp || spv.no_hp || "",
-      mitra_id:
-        spv.id_mitra !== null && spv.id_mitra !== undefined
-          ? String(spv.id_mitra)
-          : spv.mitra_id !== null && spv.mitra_id !== undefined
-            ? String(spv.mitra_id)
-            : "",
-      area_penempatan: spv.area_penempatan || "",
-      alamat_area_penempatan: spv.alamat_area_penempatan || "",
-      masa_kerja: spv.masa_kerja || "",
-      tanggal_mulai_kerja: spv.tanggal_mulai_kerja
-        ? String(spv.tanggal_mulai_kerja).split("T")[0]
-        : "",
-      masa_kontrak: spv.masa_kontrak || "",
-      status: spv.status || "AKTIF",
-      username: spv.username || "",
-      password: "",
-      pas_foto: spv.pas_foto || "",
-      surat_tugas: spv.surat_tugas || "",
-    });
-  };
-
-  const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSpv) return;
-
-    setIsSubmitting(true);
+  const fetchLaporanData = async () => {
+    setIsLoadingLaporan(true);
     try {
-      const formData = new FormData();
-      Object.entries(editForm).forEach(([key, value]) => {
-        formData.append(key, value ?? "");
-      });
-
-      if (pasFotoFile) {
-        formData.append("pas_foto_file", pasFotoFile);
-      }
-      if (suratTugasFile) {
-        formData.append("surat_tugas_file", suratTugasFile);
-      }
-
-      const res = await fetch(`/api/spv/${editingSpv.id}`, {
-        method: "PUT",
-        body: formData,
-      });
-
+      const res = await fetch("/super-admin/laporan");
       const data = await res.json();
-      if (res.ok && data.success) {
-        setEditingSpv(null);
-        setPasFotoFile(null);
-        setSuratTugasFile(null);
-        fetchSupervisors();
-      } else {
-        alert(data.message || "Gagal memperbarui data supervisor");
+      if (data.success) {
+        setLaporanList(data.laporan || []);
       }
-    } catch (err) {
-      console.error("Error updating supervisor:", err);
-      alert("Terjadi kesalahan jaringan saat memperbarui data.");
+    } catch (error) {
+      console.error("Error fetching laporan:", error);
     } finally {
-      setIsSubmitting(false);
+      setIsLoadingLaporan(false);
     }
   };
-
-  const handleConfirmDelete = async () => {
-    if (!deletingSpv) return;
-
-    setIsSubmitting(true);
-    try {
-      const res = await fetch(`/api/supervisors/${deletingSpv.id}`, {
-        method: "DELETE",
-      });
-      const result = await res.json();
-
-      if (!res.ok || !result.success) {
-        alert(result.message || "Gagal menghapus supervisor");
-        return;
-      }
-
-      setSupervisors((prev) =>
-        prev.filter((item) => item.id !== deletingSpv.id)
-      );
-      setDeletingSpv(null);
-    } catch (err) {
-      console.error(err);
-      alert("Terjadi kesalahan jaringan saat menghapus data");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const fetchMitraOptions = async () => {
-    try {
-      const res = await fetch("/api/mitra");
-      const result = await res.json();
-      if (result.success) {
-        const activeMitra = (result.data || []).filter(
-          (m: any) => m.status === "ACTIVE"
-        );
-        setMitraOptions(activeMitra);
-      }
-    } catch (error: any) {
-      console.error("Gagal mengambil data mitra:", error);
-    }
-  };
-
-  const fetchNonFrontingData = async () => {
-    try {
-      const res = await fetch("/super-admin/get-non-fronting");
-      if (!res.ok) throw new Error(`Server Error: ${res.status}`);
-      const result = await res.json();
-      if (result.success) {
-        setNonFrontingList(result.data || []);
-      }
-    } catch (error: any) {
-      console.error("Gagal mengambil data non-fronting:", error);
-    }
-  };
-
-  const fetchUnitKerjaData = async () => {
-    try {
-      const res = await fetch("/super-admin/get-unit-kerja");
-      const result = await res.json();
-      if (result.success) {
-        setUnitKerjaOptions(result.data || []);
-      }
-    } catch (error: any) {
-      console.error("Gagal mengambil data unit kerja:", error);
-    }
-  };
-
-  // Muat daftar unit kerja untuk menu sidebar hanya sekali setelah terautentikasi
-  useEffect(() => {
-    if (status === "authenticated" && unitKerjaOptions.length === 0) {
-      fetchUnitKerjaData();
-    }
-  }, [status, unitKerjaOptions.length]);
-
-  // Muat opsi mitra hanya saat membuka menu yang membutuhkan relasi mitra
-  useEffect(() => {
-    if (status !== "authenticated") return;
-    if (
-      ["list-supervisor", "edit-non-fronting"].includes(currentView) &&
-      mitraOptions.length === 0
-    ) {
-      fetchMitraOptions();
-    }
-  }, [currentView, status, mitraOptions.length]);
-
-  const handleNonAktifkanPegawai = async (id: any, namaPegawai: string) => {
-    if (confirm(`Yakin ingin menghapus akun pegawai "${namaPegawai}"?`)) {
-      try {
-        const res = await fetch("/super-admin/delete-data-pegawai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
-        const result = await res.json();
-        if (result.success) {
-          alert(`Akun pegawai ${namaPegawai} berhasil dihapus!`);
-          fetchNonFrontingData();
-        } else {
-          alert(result.message || "Gagal menghapus akun pegawai.");
-        }
-      } catch (error: any) {
-        console.error("Error menonaktifkan pegawai:", error);
-        alert("Terjadi kesalahan sistem.");
-      }
-    }
-  };
-
-  const handleEditNonFronting = (item: any) => {
-    const formatDate = (dateStr: any) => {
-      if (!dateStr) return "";
-      try {
-        const d = new Date(dateStr);
-        return isNaN(d.getTime())
-          ? String(dateStr).slice(0, 10)
-          : d.toISOString().split("T")[0];
-      } catch {
-        return String(dateStr).slice(0, 10);
-      }
-    };
-
-    const formattedItem = {
-      ...item,
-      tanggal_lahir: formatDate(item.tanggal_lahir),
-      tanggal_mulai_kerja: formatDate(item.tanggal_mulai_kerja),
-    };
-
-    setSelectedData(formattedItem);
-    setEditFormData(formattedItem);
-    setCurrentView("edit-non-fronting");
-  };
-
-  const parseDeskripsi = (desc: any) => {
-    if (!desc) return { pertanyaan: "", jawaban: "", isAnswered: false };
-    const parts = desc.split("\n\nJawaban :\n");
-    const rawPertanyaan = parts[0]?.replace("Pertanyaan :\n", "") || "";
-    const rawJawaban = parts[1] || "";
-
-    return {
-      pertanyaan: rawPertanyaan,
-      jawaban: rawJawaban.includes("[Menunggu balasan") ? "" : rawJawaban,
-      isAnswered:
-        !rawJawaban.includes("[Menunggu balasan") && rawJawaban.trim() !== "",
-    };
-  };
-
-  const filteredListAkun = frontlineList.filter((item) => {
-    if (!searchListAkun) return true;
-    const keyword = searchListAkun.toLowerCase();
-    return (
-      (item.nama && item.nama.toLowerCase().includes(keyword)) ||
-      (item.username && item.username.toLowerCase().includes(keyword)) ||
-      (item.nik && item.nik.toLowerCase().includes(keyword)) ||
-      (item.penempatan && item.penempatan.toLowerCase().includes(keyword))
-    );
-  });
-
-  const indexOfLastItemAkun = currentPageListAkun * itemsPerPage;
-  const indexOfFirstItemAkun = indexOfLastItemAkun - itemsPerPage;
-  const currentListAkun = filteredListAkun.slice(
-    indexOfFirstItemAkun,
-    indexOfLastItemAkun
-  );
-  const totalPagesListAkun = Math.ceil(filteredListAkun.length / itemsPerPage);
-
-  const filteredPenutupanAkun = frontlineList.filter((item) => {
-    if (!searchPenutupanAkun) return true;
-    const keyword = searchPenutupanAkun.toLowerCase();
-    return (
-      (item.nama && item.nama.toLowerCase().includes(keyword)) ||
-      (item.username && item.username.toLowerCase().includes(keyword)) ||
-      (item.nik && item.nik.toLowerCase().includes(keyword)) ||
-      (item.penempatan && item.penempatan.toLowerCase().includes(keyword))
-    );
-  });
-
-  const indexOfLastItemPenutupan = currentPagePenutupanAkun * itemsPerPage;
-  const indexOfFirstItemPenutupan = indexOfLastItemPenutupan - itemsPerPage;
-  const currentPenutupanAkun = filteredPenutupanAkun.slice(
-    indexOfFirstItemPenutupan,
-    indexOfLastItemPenutupan
-  );
-  const totalPagesPenutupanAkun = Math.ceil(
-    filteredPenutupanAkun.length / itemsPerPage
-  );
 
   useEffect(() => {
-    if (status !== "authenticated") return;
-
-    if (
-      currentView === "list-akun" ||
-      currentView === "penutupan-akun" ||
-      currentView === "upload-fee"
-    ) {
+    if (status === "authenticated") {
       fetchFrontlineData();
-    }
-    if (
-      currentView === "form-tambah" ||
-      currentView === "form-edit" ||
-      currentView === "upload-fee"
-    ) {
-      fetchWilayahData();
-      fetchLeadersData();
-    }
-    if (currentView === "laporan-aduan") {
-      fetchLaporanAduan();
-    }
-    if (["list-unit-kerja", "create-non-fronting"].includes(currentView)) {
+      fetchUnitKerja();
       fetchNonFrontingData();
-    }
-    if (currentView === "list-supervisor") {
       fetchSupervisors();
+      fetchLaporanData();
     }
-  }, [currentView, status]);
+  }, [status]);
 
+  useEffect(() => {
+    if (currentView === "form-edit" && selectedData) {
+      setNikValue(selectedData.nik || "");
+      setSelectedKanwil(selectedData.kanwil || "");
+      setSelectedArea(selectedData.area || "");
+      setSelectedPenempatan(selectedData.penempatan || "");
+      setSelectedLeader(selectedData.leader || "");
+      setIdCardName("");
+      setStNames([]);
+    } else if (currentView === "form-tambah") {
+      setNikValue("");
+      setSelectedKanwil("");
+      setSelectedArea("");
+      setSelectedPenempatan("");
+      setSelectedLeader("");
+      setIdCardName("");
+      setStNames([]);
+    }
+  }, [currentView, selectedData]);
+
+  // ==========================================
+  // 5. HANDLERS & DERIVED DATA
+  // ==========================================
+  const getFileUrl = (file?: string | null, folder?: string): string => {
+    if (!file) return "";
+    if (
+      file.startsWith("http://") ||
+      file.startsWith("https://") ||
+      file.startsWith("/")
+    ) {
+      return file;
+    }
+    return folder ? `/uploads/${folder}/${file}` : `/uploads/${file}`;
+  };
+
+  const formatDateForInput = (dateVal?: string | null): string => {
+    if (!dateVal) return "";
+    if (dateVal.includes("T")) return dateVal.split("T")[0];
+    return dateVal;
+  };
+
+  // Non-Fronting Create Submit
   const handleNonFrontingSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -2555,7 +792,6 @@ function DashboardContent() {
     setIsLoading(true);
     setSuccessMessage("");
     setErrorMessage("");
-
     const formElement = e.currentTarget;
     const formData = new FormData(formElement);
 
@@ -2565,48 +801,47 @@ function DashboardContent() {
         body: formData,
       });
       const result = await response.json();
-
       if (result.success) {
-        setSuccessMessage(`Akun Non-Fronting berhasil dibuat!`);
+        setSuccessMessage(
+          result.message || "Akun Non-Fronting berhasil dibuat!"
+        );
         formElement.reset();
         setPasFotoName("");
         setSuratTugasName("");
-        setTimeout(() => setSuccessMessage(""), 3000);
         setJabatanNonFronting("");
+        setSelectedSupervisorNonFronting("");
+        setSelectedUnitKerjaNonFronting("");
+        fetchNonFrontingData();
+        fetchSupervisors();
+        setTimeout(() => setSuccessMessage(""), 3000);
       } else {
-        setErrorMessage(result.message || "Gagal membuat akun.");
+        setErrorMessage(result.message || "Gagal membuat akun Non-Fronting.");
         setTimeout(() => setErrorMessage(""), 5000);
       }
     } catch (error) {
-      setErrorMessage("Terjadi kesalahan sistem.");
+      console.error("Error create non-fronting:", error);
+      setErrorMessage("Terjadi kesalahan sistem saat menyimpan data.");
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getFileUrl = (fileRef: string | null | undefined, folder: string) => {
-    if (!fileRef) return "#";
-
-    if (
-      fileRef.startsWith("http://") ||
-      fileRef.startsWith("https://") ||
-      fileRef.includes("cloudinary.com")
-    ) {
-      return fileRef;
-    }
-
-    if (fileRef.startsWith("/uploads/")) {
-      return fileRef;
-    }
-
-    return `/uploads/${folder}/${fileRef}`;
+  // Non-Fronting Edit & Delete Handlers
+  const handleEditNonFronting = (item: any) => {
+    setEditFormData({
+      ...item,
+      tanggal_lahir: formatDateForInput(item.tanggal_lahir),
+      tanggal_mulai_kerja: formatDateForInput(item.tanggal_mulai_kerja),
+    });
+    setEditJabatan(item.jabatan || "PEGAWAI");
+    setEditSupervisor(item.supervisor || "");
+    setCurrentView("edit-non-fronting");
   };
 
   const handleEditJabatanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     setEditJabatan(val);
-
     if (val.toUpperCase() === "SUPERVISOR") {
       setEditSupervisor("");
     }
@@ -2616,256 +851,281 @@ function DashboardContent() {
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
+    if (!editFormData) return;
     setIsLoading(true);
     setSuccessMessage("");
     setErrorMessage("");
 
-    const formElement = e.currentTarget;
-    const formData = new FormData(formElement);
-
-    if (selectedData?.id) {
-      formData.append("id", String(selectedData.id));
-    }
+    const formData = new FormData(e.currentTarget);
+    formData.append("id", String(editFormData.id));
 
     try {
-      const response = await fetch("/super-admin/update-non-fronting", {
+      const res = await fetch("/super-admin/edit-non-fronting", {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
-
+      const result = await res.json();
       if (result.success) {
-        setSuccessMessage("Data pegawai berhasil diperbarui!");
-        fetchNonFrontingData();
-
+        setSuccessMessage(
+          result.message || "Data pegawai non-fronting berhasil diperbarui!"
+        );
+        await fetchNonFrontingData();
+        await fetchSupervisors();
         setTimeout(() => {
           setSuccessMessage("");
-          setSelectedData(null);
+          setEditFormData(null);
           setCurrentView("list-unit-kerja");
         }, 1500);
       } else {
         setErrorMessage(result.message || "Gagal memperbarui data pegawai.");
-        setTimeout(() => setErrorMessage(""), 5000);
       }
-    } catch (error: any) {
-      console.error("Error update non-fronting:", error);
+    } catch (error) {
+      console.error("Error updating non-fronting:", error);
       setErrorMessage("Terjadi kesalahan sistem.");
-      setTimeout(() => setErrorMessage(""), 5000);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (currentView === "form-edit" && selectedData) {
-      setSelectedKanwil(selectedData.kanwil || "");
-      setSelectedArea(selectedData.area || "");
-      setSelectedPenempatan(selectedData.penempatan || "");
-      setSelectedLeader(selectedData.leader || "");
-      setStNames([]);
-    } else if (currentView === "form-tambah") {
-      setSelectedKanwil("");
-      setSelectedArea("");
-      setSelectedPenempatan("");
-      setSelectedLeader("");
-      setStNames([]);
-    }
-  }, [currentView, selectedData]);
-
-  const fetchLaporanAduan = async () => {
-    setIsLoadingLaporan(true);
+  const handleNonAktifkanPegawai = async (id: number | string, nama: string) => {
+    if (!confirm(`Yakin ingin menghapus data pegawai "${nama}"?`)) return;
     try {
-      const res = await fetch("/api/super-admin/laporan");
+      const res = await fetch("/super-admin/delete-non-fronting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
       const result = await res.json();
       if (result.success) {
-        setLaporanList(result.data);
+        setSuccessMessage(result.message || "Data pegawai berhasil dihapus.");
+        fetchNonFrontingData();
+        fetchSupervisors();
+        setTimeout(() => setSuccessMessage(""), 3000);
+      } else {
+        setErrorMessage(result.message || "Gagal menghapus data pegawai.");
+        setTimeout(() => setErrorMessage(""), 5000);
       }
-    } catch (e) {
-      console.error("Gagal menarik data laporan", e);
-    } finally {
-      setIsLoadingLaporan(false);
+    } catch {
+      setErrorMessage("Terjadi kesalahan sistem.");
+      setTimeout(() => setErrorMessage(""), 5000);
     }
+  };
+
+  // Supervisor Modal Handlers
+  const handleOpenEdit = (spv: any) => {
+    setEditingSpv(spv);
+    setPasFotoFile(null);
+    setSuratTugasFile(null);
+    setPasFotoPreview(getFileUrl(spv.pas_foto, "pas_foto"));
+    setEditForm({
+      id: String(spv.id || ""),
+      nama: spv.nama || "",
+      nik: spv.nik || "",
+      jenis_kelamin: spv.jenis_kelamin || "",
+      status_pernikahan: spv.status_pernikahan || "",
+      tempat_lahir: spv.tempat_lahir || "",
+      tanggal_lahir: formatDateForInput(spv.tanggal_lahir),
+      golongan_darah: spv.golongan_darah || "",
+      email: spv.email || "",
+      no_whatsapp: spv.no_whatsapp || spv.no_hp || "",
+      domisili: spv.domisili || "",
+      mitra_id: spv.mitra_id ? String(spv.mitra_id) : "",
+      area_penempatan: spv.area_penempatan || "",
+      alamat_area_penempatan: spv.alamat_area_penempatan || "",
+      tanggal_mulai_kerja: formatDateForInput(spv.tanggal_mulai_kerja),
+      masa_kerja: spv.masa_kerja || "",
+      masa_kontrak: spv.masa_kontrak || "",
+      status: spv.status || "AKTIF",
+      username: spv.username || "",
+      password: "",
+      pas_foto: spv.pas_foto || "",
+      surat_tugas: spv.surat_tugas || "",
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSuccessMessage("");
+    setErrorMessage("");
+
+    const formData = new FormData();
+    Object.entries(editForm).forEach(([key, value]) => {
+      formData.append(key, value ?? "");
+    });
+    if (pasFotoFile) formData.append("pas_foto_file", pasFotoFile);
+    if (suratTugasFile) formData.append("surat_tugas_file", suratTugasFile);
+
+    try {
+      const res = await fetch("/super-admin/edit-supervisor", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSuccessMessage(
+          result.message || "Data supervisor berhasil diperbarui!"
+        );
+        setEditingSpv(null);
+        fetchSupervisors();
+        fetchNonFrontingData();
+        setTimeout(() => setSuccessMessage(""), 3000);
+      } else {
+        setErrorMessage(result.message || "Gagal memperbarui supervisor.");
+        setTimeout(() => setErrorMessage(""), 5000);
+      }
+    } catch {
+      setErrorMessage("Terjadi kesalahan sistem saat menyimpan supervisor.");
+      setTimeout(() => setErrorMessage(""), 5000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingSpv) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/super-admin/delete-supervisor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deletingSpv.id }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSuccessMessage(result.message || "Supervisor berhasil dihapus.");
+        setDeletingSpv(null);
+        fetchSupervisors();
+        fetchNonFrontingData();
+        setTimeout(() => setSuccessMessage(""), 3000);
+      } else {
+        setErrorMessage(result.message || "Gagal menghapus supervisor.");
+        setTimeout(() => setErrorMessage(""), 5000);
+      }
+    } catch {
+      setErrorMessage("Terjadi kesalahan sistem.");
+      setTimeout(() => setErrorMessage(""), 5000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Laporan & Aduan Helpers
+  const parseDeskripsi = (deskripsi?: string) => {
+    if (!deskripsi)
+      return { pertanyaan: "-", jawaban: "", isAnswered: false };
+    const separator = "\n\n--- BALASAN ADMIN ---\n";
+    if (deskripsi.includes(separator)) {
+      const [pertanyaan, jawaban] = deskripsi.split(separator);
+      return {
+        pertanyaan: pertanyaan.trim(),
+        jawaban: jawaban.trim(),
+        isAnswered: Boolean(jawaban.trim()),
+      };
+    }
+    return { pertanyaan: deskripsi, jawaban: "", isAnswered: false };
   };
 
   const handleOpenLaporan = (item: any) => {
     setSelectedLaporan(item);
-    const parsed = parseDeskripsi(item.deskripsi);
-    setReplyText(parsed.jawaban);
+    const { jawaban } = parseDeskripsi(item.deskripsi);
+    setReplyText(jawaban || "");
     setReplyMsg({ type: "", text: "" });
   };
 
   const handleSubmitReply = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
-
+    if (!selectedLaporan || !replyText.trim()) return;
     setIsSubmittingReply(true);
     setReplyMsg({ type: "", text: "" });
 
     try {
-      const res = await fetch("/api/super-admin/laporan", {
-        method: "PUT",
+      const res = await fetch("/super-admin/reply-laporan", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: selectedLaporan.id,
-          answer: replyText,
+          balasan: replyText.trim(),
         }),
       });
-
       const result = await res.json();
       if (result.success) {
-        setReplyMsg({ type: "success", text: "Balasan berhasil dikirim!" });
-
-        setLaporanList((prev) =>
-          prev.map((l) => {
-            if (l.id === selectedLaporan.id) {
-              const parts = l.deskripsi.split("\n\nJawaban :\n");
-              return {
-                ...l,
-                deskripsi: `${parts[0]}\n\nJawaban :\n${replyText}`,
-              };
-            }
-            return l;
-          })
-        );
-
-        setTimeout(() => setSelectedLaporan(null), 1500);
+        setReplyMsg({ type: "success", text: "Balasan berhasil disimpan!" });
+        fetchLaporanData();
+        setTimeout(() => {
+          setSelectedLaporan(null);
+          setReplyMsg({ type: "", text: "" });
+        }, 1200);
       } else {
         setReplyMsg({
           type: "error",
-          text: result.message || "Gagal mengirim balasan.",
+          text: result.message || "Gagal menyimpan balasan.",
         });
       }
-    } catch (e) {
+    } catch {
       setReplyMsg({ type: "error", text: "Terjadi kesalahan sistem." });
     } finally {
       setIsSubmittingReply(false);
     }
   };
 
-  function Pagination({
-    currentPage,
-    totalPages,
-    onPageChange,
-  }: {
-    currentPage: number;
-    totalPages: number;
-    onPageChange: (page: number) => void;
-  }) {
-    if (totalPages <= 1) return null;
+  // Pagination Fronting Lists
+  const itemsPerPage = 10;
 
-    const getPageNumbers = () => {
-      const pages = [];
-      let startPage = Math.max(1, currentPage - 2);
-      let endPage = Math.min(totalPages, currentPage + 2);
-
-      if (currentPage <= 3) {
-        endPage = Math.min(5, totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        startPage = Math.max(1, totalPages - 4);
-      }
-
-      for (let i = startPage; i <= endPage; i++) {
-        pages.push(i);
-      }
-      return pages;
-    };
-
+  const filteredListAkun = frontlineList.filter((item) => {
+    if (!searchListAkun) return true;
+    const kw = searchListAkun.toLowerCase();
     return (
-      <div className="flex flex-col sm:flex-row justify-between items-center mt-4 px-2 py-3 bg-gray-50 border-t border-gray-200 rounded-b-lg gap-3">
-        <span className="text-xs text-gray-500">
-          Menampilkan halaman <b>{currentPage}</b> dari <b>{totalPages}</b>
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-3 py-1.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            &larr; Prev
-          </button>
-
-          {getPageNumbers().map((num) => (
-            <button
-              key={num}
-              onClick={() => onPageChange(num)}
-              className={`px-3 py-1.5 border rounded text-xs font-semibold transition-colors ${
-                currentPage === num
-                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
-              }`}
-            >
-              {num}
-            </button>
-          ))}
-
-          <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next &rarr;
-          </button>
-        </div>
-      </div>
+      item.nama?.toLowerCase().includes(kw) ||
+      item.nik?.toLowerCase().includes(kw) ||
+      item.username?.toLowerCase().includes(kw) ||
+      item.penempatan?.toLowerCase().includes(kw)
     );
-  }
-
-  const fetchFrontlineData = async () => {
-    try {
-      const res = await fetch("/api/get-fronting/search");
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-
-      const result = await res.json();
-      if (result.success !== undefined) {
-        if (result.success) {
-          setFrontlineList(Array.isArray(result.data) ? result.data : []);
-        }
-      } else if (Array.isArray(result)) {
-        setFrontlineList(result);
-      } else {
-        setFrontlineList([]);
-      }
-    } catch (error) {
-      console.error("Gagal mengambil data fronting:", error);
-    }
-  };
-
-  const fetchWilayahData = async () => {
-    try {
-      const res = await fetch("/api/get-wilayah");
-      const result = await res.json();
-      if (result.success)
-        setWilayahData(Array.isArray(result.data) ? result.data : []);
-    } catch (error) {
-      console.error("Gagal mengambil data wilayah", error);
-    }
-  };
-
-  const fetchLeadersData = async () => {
-    try {
-      const res = await fetch("/api/leaders");
-      if (res.ok) {
-        const data = await res.json();
-        setLeadersList(Array.isArray(data) ? data : []);
-      }
-    } catch (error) {
-      console.error("Gagal mengambil data leader", error);
-    }
-  };
-
-  const kanwilOptions = Array.from(
-    new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean))
+  });
+  const totalPagesListAkun = Math.max(
+    1,
+    Math.ceil(filteredListAkun.length / itemsPerPage)
   );
-  const areaOptions = Array.from(
-    new Set(
+  const currentListAkun = filteredListAkun.slice(
+    (currentPageListAkun - 1) * itemsPerPage,
+    currentPageListAkun * itemsPerPage
+  );
+
+  const filteredPenutupanAkun = frontlineList.filter((item) => {
+    if (!searchPenutupanAkun) return true;
+    const kw = searchPenutupanAkun.toLowerCase();
+    return (
+      item.nama?.toLowerCase().includes(kw) ||
+      item.nik?.toLowerCase().includes(kw) ||
+      item.username?.toLowerCase().includes(kw) ||
+      item.penempatan?.toLowerCase().includes(kw)
+    );
+  });
+  const totalPagesPenutupanAkun = Math.max(
+    1,
+    Math.ceil(filteredPenutupanAkun.length / itemsPerPage)
+  );
+  const currentPenutupanAkun = filteredPenutupanAkun.slice(
+    (currentPagePenutupanAkun - 1) * itemsPerPage,
+    currentPagePenutupanAkun * itemsPerPage
+  );
+
+  // Cascading Wilayah & Leader Options
+  const kanwilOptions = [
+    ...new Set(wilayahData.map((item) => item?.kanwil).filter(Boolean)),
+  ] as string[];
+
+  const areaOptions = [
+    ...new Set(
       wilayahData
         .filter((item) => item?.kanwil === selectedKanwil)
         .map((item) => item?.area)
         .filter(Boolean)
-    )
-  );
-  const penempatanOptions = Array.from(
-    new Set(
+    ),
+  ] as string[];
+
+  const penempatanOptions = [
+    ...new Set(
       wilayahData
         .filter(
           (item) =>
@@ -2873,27 +1133,25 @@ function DashboardContent() {
         )
         .map((item) => item?.penempatan)
         .filter(Boolean)
-    )
-  );
-
-  const parseJSON = (data: any) => {
-    try {
-      return typeof data === "string"
-        ? JSON.parse(data)
-        : Array.isArray(data)
-          ? data
-          : [];
-    } catch {
-      return [];
-    }
-  };
+    ),
+  ] as string[];
 
   const filteredLeaders = leadersList.filter((leader) => {
-    if (!selectedKanwil || !selectedArea || !selectedPenempatan) return false;
-    const kArr = parseJSON(leader.kanwil);
-    const aArr = parseJSON(leader.area);
-    const pArr = parseJSON(leader.penempatan);
-
+    const kArr = Array.isArray(leader.kanwil)
+      ? leader.kanwil
+      : leader.kanwil
+        ? [leader.kanwil]
+        : [];
+    const aArr = Array.isArray(leader.area)
+      ? leader.area
+      : leader.area
+        ? [leader.area]
+        : [];
+    const pArr = Array.isArray(leader.penempatan)
+      ? leader.penempatan
+      : leader.penempatan
+        ? [leader.penempatan]
+        : [];
     return (
       kArr.includes(selectedKanwil) &&
       aArr.includes(selectedArea) &&
@@ -2991,6 +1249,62 @@ function DashboardContent() {
     }
   };
 
+  const safeFetchJson = async (url: string) => {
+    const res = await fetch(url);
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new Error(
+        `Endpoint ${url} merespons HTTP ${res.status} (bukan JSON).`
+      );
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.message || `HTTP Error ${res.status}`);
+    }
+    return data;
+  };
+
+  const fetchNonFrontingData = async () => {
+    try {
+      const data = await safeFetchJson("/super-admin/get-non-fronting");
+      if (data.success) {
+        setNonFrontingList(data.pegawai || data.data || []);
+        setUnitKerjaOptions(data.unitKerja || data.unit_kerja || []);
+        setMitraOptions(data.mitra || []);
+      }
+    } catch (error: any) {
+      console.error("Error fetching non-fronting data:", error);
+      setErrorMessage(
+        error?.message || "Gagal memuat data pegawai & master unit kerja."
+      );
+    }
+  };
+
+  const fetchUnitKerja = async () => {
+    try {
+      const result = await safeFetchJson("/super-admin/get-unit-kerja");
+      if (result.success) {
+        setUnitKerjaOptions(result.data || result.unitKerja || []);
+      }
+    } catch (error) {
+      console.error("Error fetching unit kerja:", error);
+    }
+  };
+
+  const fetchSupervisors = async () => {
+    setIsLoadingSupervisors(true);
+    try {
+      const data = await safeFetchJson("/api/spv/list-data");
+      if (data.success) {
+        setSupervisors(data.supervisors || data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching supervisors:", error);
+    } finally {
+      setIsLoadingSupervisors(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -3023,6 +1337,7 @@ function DashboardContent() {
         setSelectedArea("");
         setSelectedPenempatan("");
         setSelectedLeader("");
+        fetchFrontlineData();
         setTimeout(() => {
           setCurrentView("list-akun");
           setSuccessMessage("");
@@ -3062,7 +1377,7 @@ function DashboardContent() {
         setErrorMessage(result.message || "Gagal mengunggah.");
         setTimeout(() => setErrorMessage(""), 5000);
       }
-    } catch (error) {
+    } catch {
       setErrorMessage("Kesalahan sistem saat mengunggah.");
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
@@ -3301,26 +1616,43 @@ function DashboardContent() {
 
               {isUnitKerjaMenuOpen && (
                 <ul className="mt-1 ml-2 pl-2 border-l border-gray-700 space-y-1">
-                  {unitKerjaOptions.map((unit: any) => (
-                    <li key={unit.id}>
-                      <button
+                    <li>
+                    <button
+                        type="button"
                         onClick={() => {
-                          setSelectedUnitKerja(unit.nama_unit);
-                          setCurrentView("list-unit-kerja");
+                        setSelectedUnitKerja("");
+                        setCurrentView("list-unit-kerja");
                         }}
                         className={`w-full text-left px-3 py-2 text-xs rounded transition-colors ${
-                          currentView === "list-unit-kerja" &&
-                          selectedUnitKerja === unit.nama_unit
+                        currentView === "list-unit-kerja" && selectedUnitKerja === ""
                             ? "text-white font-bold bg-blue-600"
                             : "text-gray-400 hover:text-white hover:bg-gray-800"
                         }`}
-                      >
-                        {unit.nama_unit}
-                      </button>
+                    >
+                        Semua Unit Kerja
+                    </button>
                     </li>
-                  ))}
+                    {unitKerjaOptions.map((unit: any) => (
+                    <li key={unit.id}>
+                        <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedUnitKerja(unit.nama_unit);
+                            setCurrentView("list-unit-kerja");
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs rounded transition-colors ${
+                            currentView === "list-unit-kerja" &&
+                            selectedUnitKerja === unit.nama_unit
+                            ? "text-white font-bold bg-blue-600"
+                            : "text-gray-400 hover:text-white hover:bg-gray-800"
+                        }`}
+                        >
+                        {unit.nama_unit}
+                        </button>
+                    </li>
+                    ))}
                 </ul>
-              )}
+                )}
             </li>
           </ul>
         </div>
@@ -4009,7 +2341,9 @@ function DashboardContent() {
                               if (file) {
                                 setPasFotoPreview(URL.createObjectURL(file));
                               } else {
-                                setPasFotoPreview(editForm.pas_foto || "");
+                                setPasFotoPreview(
+                                  getFileUrl(editForm.pas_foto, "pas_foto")
+                                );
                               }
                             }}
                             className="w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
@@ -4017,7 +2351,7 @@ function DashboardContent() {
                           <div className="mt-1.5 flex items-center gap-3">
                             {editForm.pas_foto && !pasFotoFile && (
                               <a
-                                href={editForm.pas_foto}
+                                href={getFileUrl(editForm.pas_foto, "pas_foto")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-[11px] font-medium text-blue-600 hover:underline"
@@ -4030,7 +2364,9 @@ function DashboardContent() {
                                 type="button"
                                 onClick={() => {
                                   setPasFotoFile(null);
-                                  setPasFotoPreview(editForm.pas_foto || "");
+                                  setPasFotoPreview(
+                                    getFileUrl(editForm.pas_foto, "pas_foto")
+                                  );
                                 }}
                                 className="text-[11px] font-medium text-red-600 hover:underline"
                               >
@@ -4077,7 +2413,7 @@ function DashboardContent() {
                         </p>
                       </div>
                       <a
-                        href={editForm.surat_tugas}
+                        href={getFileUrl(editForm.surat_tugas, "surat_tugas")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="shrink-0 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
@@ -4839,7 +3175,7 @@ function DashboardContent() {
                                       result.message || "Gagal menutup akun."
                                     );
                                   }
-                                } catch (err) {
+                                } catch {
                                   alert("Terjadi kesalahan sistem.");
                                 }
                               }
@@ -5004,7 +3340,7 @@ function DashboardContent() {
                       setErrorMessage(result.message || "Gagal mereset data.");
                       setTimeout(() => setErrorMessage(""), 5000);
                     }
-                  } catch (err) {
+                  } catch {
                     setErrorMessage("Terjadi kesalahan sistem.");
                     setTimeout(() => setErrorMessage(""), 5000);
                   }
@@ -5116,6 +3452,7 @@ function DashboardContent() {
           </div>
         )}
 
+        {/* CREATE NON-FRONTING: SUPERVISOR & UNIT KERJA HANYA TAMPIL JIKA JABATAN = PEGAWAI */}
         {currentView === "create-non-fronting" && (
           <div className="bg-white rounded-xl shadow-sm p-6 max-w-5xl mx-auto border border-gray-100">
             <div className="mb-6 border-b pb-4">
@@ -5245,9 +3582,14 @@ function DashboardContent() {
                     name="jabatan"
                     required
                     value={jabatanNonFronting}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setJabatanNonFronting(e.target.value)
-                    }
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      const val = e.target.value;
+                      setJabatanNonFronting(val);
+                      if (val.toUpperCase() !== "PEGAWAI") {
+                        setSelectedSupervisorNonFronting("");
+                        setSelectedUnitKerjaNonFronting("");
+                      }
+                    }}
                     className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">-- Pilih Jabatan --</option>
@@ -5258,23 +3600,73 @@ function DashboardContent() {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    UNIT KERJA <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="unit_kerja"
-                    required
-                    className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Pilih Unit Kerja --</option>
-                    {unitKerjaOptions.map((unit: any) => (
-                      <option key={unit.id} value={unit.nama_unit}>
-                        {unit.nama_unit}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {jabatanNonFronting.toUpperCase() === "PEGAWAI" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        SUPERVISOR <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="supervisor"
+                        required
+                        value={selectedSupervisorNonFronting}
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                          setSelectedSupervisorNonFronting(e.target.value)
+                        }
+                        className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Pilih Supervisor --</option>
+                        {(() => {
+                          const spvList = nonFrontingList.filter(
+                            (item: any) => {
+                              const jab = (item.jabatan || "")
+                                .trim()
+                                .toLowerCase();
+                              return jab === "supervisor" || jab === "spv";
+                            }
+                          );
+
+                          if (spvList.length === 0) {
+                            return (
+                              <option value="" disabled>
+                                ⚠ Belum ada data Supervisor di database
+                              </option>
+                            );
+                          }
+
+                          return spvList.map((spv: any) => (
+                            <option key={spv.id} value={spv.nama}>
+                              {spv.nama} -{" "}
+                              {spv.area_penempatan || spv.unit_kerja}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        UNIT KERJA <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="unit_kerja"
+                        required
+                        value={selectedUnitKerjaNonFronting}
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                          setSelectedUnitKerjaNonFronting(e.target.value)
+                        }
+                        className="w-full p-2.5 bg-gray-50 text-gray-900 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Pilih Unit Kerja --</option>
+                        {unitKerjaOptions.map((unit: any) => (
+                          <option key={unit.id} value={unit.nama_unit}>
+                            {unit.nama_unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -5465,7 +3857,7 @@ function DashboardContent() {
                           <td className="px-6 py-4 text-xs">
                             {item.pas_foto && (
                               <a
-                                href={`/uploads/pas_foto/${item.pas_foto}`}
+                                href={getFileUrl(item.pas_foto, "pas_foto")}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-blue-600 hover:underline block"
@@ -5475,7 +3867,10 @@ function DashboardContent() {
                             )}
                             {item.surat_tugas && (
                               <a
-                                href={`/uploads/surat_tugas/${item.surat_tugas}`}
+                                href={getFileUrl(
+                                  item.surat_tugas,
+                                  "surat_tugas"
+                                )}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-purple-600 hover:underline block mt-0.5"
@@ -5534,18 +3929,6 @@ function DashboardContent() {
                 ← Kembali ke Daftar Pegawai
               </button>
             </div>
-
-            {successMessage && (
-              <div className="mb-4 p-3 bg-green-100 border border-green-300 text-green-700 rounded-lg text-sm font-semibold">
-                {successMessage}
-              </div>
-            )}
-
-            {errorMessage && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm font-semibold">
-                {errorMessage}
-              </div>
-            )}
 
             <form onSubmit={handleEditNonFrontingSubmit} className="space-y-4">
               {/* BARIS 1: NAMA, NIK, USERNAME */}
