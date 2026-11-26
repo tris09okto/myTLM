@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -9,6 +9,14 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "my TLM",
   description: "Aplikasi Manajemen my TLM",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#0f172a",
 };
 
 // Patch aman untuk mencegah crash-loop dari environment Hostinger
@@ -31,10 +39,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>
-        {/*<Providers>
-          {children}
-        </Providers>*/}
+      <body suppressHydrationWarning className="min-h-[100dvh] w-full overflow-x-clip bg-slate-50 text-slate-900 antialiased">
         <Providers>
           <SessionAutoLogoutGuard />
           {children}
