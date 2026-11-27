@@ -1626,7 +1626,8 @@ function PegawaiDashboardContent() {
 
   const handleSubmitLaporan = async (e: FormEvent) => {
     e.preventDefault();
-    setPasswordMsg({ type: "", text: "" });
+    setLaporanMsg({ type: "", text: "" });
+
     if (!laporanPesan.trim()) {
       setLaporanMsg({
         type: "error",
@@ -1638,11 +1639,19 @@ function PegawaiDashboardContent() {
     setIsSubmittingLaporan(true);
     try {
       const formData = new FormData();
-      formData.append("target", isNonFronting ? "admin_mo_spv" : laporanTarget);
+      // Fronting otomatis ditujukan ke Leader & Superadmin sekaligus
+      formData.append(
+        "target",
+        isNonFronting ? "admin_mo_spv" : "leader_superadmin"
+      );
       formData.append("pesan", laporanPesan);
       formData.append("nik", profile?.nik || session?.user?.name || "");
       formData.append("nama", profile?.nama || "");
       formData.append("nama_leader", profile?.leader || profile?.jabatan || "");
+      formData.append("nik_leader", profile?.leader_nik || "");
+      formData.append("area", profile?.area || "");
+      formData.append("penempatan", profile?.penempatan || "");
+
       if (laporanFoto) formData.append("foto", laporanFoto);
 
       const res = isNonFronting
@@ -1661,7 +1670,7 @@ function PegawaiDashboardContent() {
           type: "success",
           text: isNonFronting
             ? "Pelaporan ke Supervisor & Admin MO berhasil dikirim!"
-            : "Laporan/Aduan berhasil dikirim dan tercatat dalam sistem.",
+            : "Laporan/Aduan berhasil dikirim! Notifikasi telah diteruskan ke Leader Area dan Super Admin.",
         });
         setLaporanPesan("");
         setLaporanFoto(null);
@@ -2400,6 +2409,7 @@ function PegawaiDashboardContent() {
       {currentView === "qna" && <QnaView />}
 
       {/* 5. TAMPILAN PELAPORAN KE SUPERVISOR & ADMIN MO */}
+      {/* 5. TAMPILAN PELAPORAN KE SUPERVISOR & ADMIN MO */}
       {currentView === "laporan-aduan" && (
         <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 md:p-8">
           <div className="flex items-start gap-3 mb-4 border-b border-gray-100 pb-4">
@@ -2440,7 +2450,7 @@ function PegawaiDashboardContent() {
                 <p className="text-xs sm:text-sm text-yellow-700 mt-1">
                   {isNonFronting
                     ? "Laporan yang dikirim akan otomatis diteruskan kepada pihak Admin MO dan Supervisor (SPV)."
-                    : "Pertanyaan atau laporan yang Anda berikan terekam di sistem database (QnA)."}
+                    : "Laporan/Aduan Anda akan tersimpan di database sistem (QnA) dan otomatis mengirimkan notifikasi ke Leader Area serta Super Admin."}
                 </p>
               </div>
             </div>
@@ -2472,47 +2482,15 @@ function PegawaiDashboardContent() {
                 </div>
               </div>
             ) : (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2.5">
-                  Kirim Laporan / Bertanya Kepada:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label
-                    className={`flex items-center justify-center gap-2 p-3 border rounded-xl cursor-pointer transition-all ${
-                      laporanTarget === "leader"
-                        ? "bg-blue-50 border-blue-500 text-blue-700"
-                        : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="targetLaporan"
-                      value="leader"
-                      checked={laporanTarget === "leader"}
-                      onChange={() => setLaporanTarget("leader")}
-                      className="hidden"
-                    />
-                    <span className="text-xl">🧑‍💼</span>
-                    <span className="font-semibold text-sm">Leader Area</span>
-                  </label>
-                  <label
-                    className={`flex items-center justify-center gap-2 p-3 border rounded-xl cursor-pointer transition-all ${
-                      laporanTarget === "superadmin"
-                        ? "bg-indigo-50 border-indigo-500 text-indigo-700"
-                        : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="targetLaporan"
-                      value="superadmin"
-                      checked={laporanTarget === "superadmin"}
-                      onChange={() => setLaporanTarget("superadmin")}
-                      className="hidden"
-                    />
-                    <span className="text-xl">👑</span>
-                    <span className="font-semibold text-sm">Super Admin</span>
-                  </label>
+              <div className="p-3.5 sm:p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3">
+                <span className="text-2xl shrink-0">🔔</span>
+                <div>
+                  <p className="text-[11px] text-blue-600 font-bold uppercase tracking-wider">
+                    Tujuan Penerima & Notifikasi Otomatis
+                  </p>
+                  <p className="text-sm font-bold text-blue-900">
+                    Leader Area ({profile?.leader || "Leader"}) & Super Admin
+                  </p>
                 </div>
               </div>
             )}

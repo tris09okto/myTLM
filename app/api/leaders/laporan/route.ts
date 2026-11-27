@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   try {
     // Mencari aduan berdasarkan nama leader yang terselip di kolom judul
     const query = `SELECT * FROM qna_materi WHERE judul LIKE ? ORDER BY created_at DESC`;
-    const values = [`%[Aduan Leader ${leaderName}]%`];
+    const values = [`%[Aduan untuk Leader ${leaderName}]%`];
     
     // Sesuaikan eksekusi query dengan library DB Anda (contoh ini menggunakan mysql2/promise)
     const [rows] = await pool.query<RowDataPacket[]>(query, values);

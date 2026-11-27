@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     let description = "";
     let supervisorUsername: string | undefined;
     if (fronting.length) {
-      title = `[Aduan ${toLeader ? `Leader ${employee.leader}` : "Super Admin"}] dari ${employee.nama} (${employee.nik})`;
+      title = `[Aduan ${toLeader ? `untuk Leader ${employee.leader}` : "untuk Super Admin"}] dari ${employee.nama} (${employee.nik})`;
       description = `Pertanyaan :\n${pesan.trim()}\n\nJawaban :\n[Menunggu balasan dari ${toLeader ? "Leader" : "Super Admin"}]`;
     } else {
       if (employee.supervisor) {

@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       const [reports] = await pool.query<RowDataPacket[]>(
         `SELECT id, judul, deskripsi, file_name, created_at FROM qna_materi
          WHERE judul LIKE ? ORDER BY created_at DESC`,
-        [`%[Aduan Leader ${profile.nama_leader}]%`],
+        [`%[Aduan untuk Leader ${profile.nama_leader}]%`],
       );
       return NextResponse.json({
         kind: "leader",

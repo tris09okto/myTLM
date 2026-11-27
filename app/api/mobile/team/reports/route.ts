@@ -34,7 +34,7 @@ export async function PUT(request: Request) {
       if (!name) return NextResponse.json({ message: "Leader profile not found" }, { status: 404 });
       const [reports] = await pool.query<ReportRow[]>(
         "SELECT deskripsi FROM qna_materi WHERE id = ? AND judul LIKE ? LIMIT 1",
-        [body.id, `%[Aduan Leader ${name}]%`],
+        [body.id, `%[Aduan untuk Leader ${name}]%`],
       );
       const report = reports[0];
       if (!report) return NextResponse.json({ message: "Report not found" }, { status: 404 });

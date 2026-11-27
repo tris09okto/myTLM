@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { RowDataPacket } from 'mysql2';
-import { pool } from '@/lib/db'; 
+import { pool } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import nodemailer from "nodemailer";
 import { cleanupStoredUploads, storeImageDataUrl, type StoredUpload } from "@/lib/uploads";
@@ -76,7 +76,10 @@ export async function POST(req: Request) {
     // 2. KONDISI: SUBMIT MANUAL FORM WEB (ADD / EDIT)
     // ==============================================================
     const { id, namaLeader, kanwil, area, penempatan, email, username, password, idcard_file } = body;
-    
+
+    const cleanUsername = typeof username === "string" ? username.trim() : "";
+    const cleanPassword = typeof password === "string" ? password.trim() : "";
+
     const kanwilStr = JSON.stringify(kanwil || []);
     const areaStr = JSON.stringify(area || []);
     const penempatanStr = JSON.stringify(penempatan || []);
@@ -98,7 +101,7 @@ export async function POST(req: Request) {
     // --- PROSES UPDATE / EDIT LEADER ---
     if (id) {
       const [oldRows] = await pool.query(
-        `SELECT email, username FROM data_leader WHERE id = ?`,
+        `SELECT email, username, password FROM data_leader WHERE id = ?`,
         [id]
       ) as [any, any];
 
@@ -107,20 +110,42 @@ export async function POST(req: Request) {
         if (upload) await cleanupStoredUploads([upload]);
         return NextResponse.json({ error: "Leader tidak ditemukan" }, { status: 404 });
       }
-      const emailChanged = oldLeader.email !== email;
-      const usernameChanged = oldLeader.username !== username;
-      const passwordChanged = password && password.trim() !== "";
 
-      let hashedPassword = null;
-      if (passwordChanged) {
-        hashedPassword = await bcrypt.hash(password, 10);
+      const oldUsername = typeof oldLeader.username === "string" ? oldLeader.username.trim() : "";
+      const isCreatingNewAccount = !oldUsername && Boolean(cleanUsername);
+
+      const emailChanged = (oldLeader.email || "") !== (email || "");
+      const usernameChanged = oldUsername !== cleanUsername;
+      const passwordChanged = cleanPassword !== "";
+
+      // Jika username sebelumnya kosong dan sekarang diisi, password wajib ada untuk INSERT ke tabel users
+      if (isCreatingNewAccount && !passwordChanged && !oldLeader.password) {
+        if (upload) await cleanupStoredUploads([upload]);
+        return NextResponse.json(
+          { error: "Password wajib diisi saat membuat username baru untuk Leader" },
+          { status: 400 }
+        );
       }
+
+      let hashedPassword: string | null = null;
+      if (passwordChanged) {
+        hashedPassword = await bcrypt.hash(cleanPassword, 10);
+      }
+
+      const finalPasswordForUser = hashedPassword || oldLeader.password;
 
       let query = `
         UPDATE data_leader 
         SET nama_leader = ?, kanwil = ?, area = ?, penempatan = ?, email = ?, username = ?
       `;
-      let queryParams: any[] = [namaLeader, kanwilStr, areaStr, penempatanStr, email, username];
+      const queryParams: any[] = [
+        namaLeader,
+        kanwilStr,
+        areaStr,
+        penempatanStr,
+        email,
+        cleanUsername || null,
+      ];
 
       if (hashedPassword) {
         query += `, password = ?`;
@@ -139,20 +164,56 @@ export async function POST(req: Request) {
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
+
+        // Cek ketersediaan username di tabel users jika membuat username baru atau mengganti username
+        if (cleanUsername && usernameChanged) {
+          const [existingUsers] = await connection.query(
+            `SELECT username FROM users WHERE username = ? LIMIT 1`,
+            [cleanUsername]
+          ) as [Array<{ username: string }>, unknown];
+
+          if (existingUsers.length > 0) {
+            await connection.rollback();
+            if (upload) await cleanupStoredUploads([upload]);
+            return NextResponse.json({ error: "Username sudah digunakan" }, { status: 409 });
+          }
+        }
+
         await connection.query(query, queryParams);
-        if (username) {
-          if (hashedPassword) {
+
+        if (isCreatingNewAccount) {
+          // Username sebelumnya kosong -> INSERT baris baru ke tabel users
+          await connection.query(
+            `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'leader', 'leader')`,
+            [cleanUsername, finalPasswordForUser]
+          );
+        } else if (oldUsername && cleanUsername) {
+          // Username sebelumnya sudah ada -> cek apakah barisnya ada di tabel users
+          const [userRows] = await connection.query(
+            `SELECT id FROM users WHERE username = ? LIMIT 1`,
+            [oldUsername]
+          ) as [Array<{ id: number }>, unknown];
+
+          if (userRows.length > 0) {
+            if (hashedPassword) {
+              await connection.query(
+                `UPDATE users SET username = ?, password = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
+                [cleanUsername, hashedPassword, oldUsername]
+              );
+            } else {
+              await connection.query(
+                `UPDATE users SET username = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
+                [cleanUsername, oldUsername]
+              );
+            }
+          } else if (finalPasswordForUser) {
             await connection.query(
-              `UPDATE users SET username = ?, password = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
-              [username, hashedPassword, oldLeader.username]
-            );
-          } else {
-            await connection.query(
-              `UPDATE users SET username = ?, jabatan = 'leader', role = 'leader' WHERE username = ?`,
-              [username, oldLeader.username]
+              `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'leader', 'leader')`,
+              [cleanUsername, finalPasswordForUser]
             );
           }
         }
+
         await connection.commit();
         committed = true;
       } catch (error) {
@@ -167,26 +228,26 @@ export async function POST(req: Request) {
         connection.release();
       }
 
-      if (emailChanged || usernameChanged || passwordChanged) {
-        await sendCredentialsEmail(email, namaLeader, username, password, true);
+      if (cleanUsername && (emailChanged || usernameChanged || passwordChanged)) {
+        await sendCredentialsEmail(email, namaLeader, cleanUsername, cleanPassword, true);
       }
 
       return NextResponse.json({ message: "Data leader berhasil diperbarui!" });
+    }
 
-    } 
     // --- PROSES INSERT / TAMBAH LEADER BARU DARI FORM ---
     else {
-      if (!username?.trim() || !password?.trim()) {
+      if (!cleanUsername || !cleanPassword) {
         if (upload) await cleanupStoredUploads([upload]);
         return NextResponse.json({ error: "Username dan password wajib diisi" }, { status: 400 });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(cleanPassword, 10);
 
       const query = `
         INSERT INTO data_leader (nama_leader, kanwil, area, penempatan, email, idcard_file, username, password) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      const values = [namaLeader, kanwilStr, areaStr, penempatanStr, email, idCardName, username, hashedPassword];
+      const values = [namaLeader, kanwilStr, areaStr, penempatanStr, email, idCardName, cleanUsername, hashedPassword];
 
       const connection = await pool.getConnection();
       let result;
@@ -194,7 +255,7 @@ export async function POST(req: Request) {
         await connection.beginTransaction();
         const [existingUsers] = await connection.query(
           `SELECT username FROM users WHERE username = ? LIMIT 1`,
-          [username]
+          [cleanUsername]
         ) as [Array<{ username: string }>, unknown];
         if (existingUsers.length) {
           await connection.rollback();
@@ -204,7 +265,7 @@ export async function POST(req: Request) {
         [result] = await connection.query(query, values);
         await connection.query(
           `INSERT INTO users (username, password, jabatan, role) VALUES (?, ?, 'leader', 'leader')`,
-          [username, hashedPassword]
+          [cleanUsername, hashedPassword]
         );
         await connection.commit();
         committed = true;
@@ -220,13 +281,12 @@ export async function POST(req: Request) {
         connection.release();
       }
 
-      if (email && username) {
-        await sendCredentialsEmail(email, namaLeader, username, password, false);
+      if (email && cleanUsername) {
+        await sendCredentialsEmail(email, namaLeader, cleanUsername, cleanPassword, false);
       }
 
       return NextResponse.json({ message: "Leader berhasil ditambahkan!", data: result });
     }
-
   } catch (error: any) {
     if (!committed && safeToCleanup && upload) await cleanupStoredUploads([upload]);
     console.error("Database Error:", error);
